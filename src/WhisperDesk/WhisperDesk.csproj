@@ -17,6 +17,9 @@
     <!-- Azure OpenAI SDK -->
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
 
+    <!-- Azure Speech SDK -->
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.42.0" />
+
     <!-- Audio recording -->
     <PackageReference Include="NAudio" Version="2.2.1" />
 

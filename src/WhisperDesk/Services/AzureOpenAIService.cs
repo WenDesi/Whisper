@@ -8,13 +8,17 @@ using Microsoft.Extensions.Logging;
 
 namespace WhisperDesk.Services;
 
-public class AzureWhisperService
+/// <summary>
+/// Azure OpenAI Whisper for STT + GPT for text cleanup.
+/// Can serve as both ISpeechToTextService and ITextCleanupService.
+/// </summary>
+public class AzureOpenAIService : ISpeechToTextService, ITextCleanupService
 {
-    private readonly ILogger<AzureWhisperService> _logger;
+    private readonly ILogger<AzureOpenAIService> _logger;
     private readonly AzureOpenAISettings _settings;
     private readonly AzureOpenAIClient _client;
 
-    public AzureWhisperService(ILogger<AzureWhisperService> logger, AzureOpenAISettings settings)
+    public AzureOpenAIService(ILogger<AzureOpenAIService> logger, AzureOpenAISettings settings)
     {
         _logger = logger;
         _settings = settings;
@@ -25,7 +29,7 @@ public class AzureWhisperService
 
     public async Task<string> TranscribeAsync(byte[] audioData, string? language = null, CancellationToken ct = default)
     {
-        _logger.LogInformation("Transcribing audio ({Size} bytes)...", audioData.Length);
+        _logger.LogInformation("Transcribing audio ({Size} bytes) via Azure OpenAI Whisper...", audioData.Length);
 
         var audioClient = _client.GetAudioClient(_settings.WhisperDeployment);
 
@@ -34,9 +38,7 @@ public class AzureWhisperService
         var options = new AudioTranscriptionOptions
         {
             Language = language ?? "zh",
-            Prompt = _settings.WhisperDeployment.Contains("whisper")
-                ? "This audio contains Chinese speech with occasional English technical terms."
-                : null,
+            Prompt = "This audio contains Chinese speech with occasional English technical terms.",
             ResponseFormat = AudioTranscriptionFormat.Text
         };
 
@@ -54,7 +56,7 @@ public class AzureWhisperService
 
     public async Task<string> CleanupTextAsync(string rawText, CancellationToken ct = default)
     {
-        _logger.LogInformation("Cleaning up transcription text...");
+        _logger.LogInformation("Cleaning up transcription text via Azure OpenAI...");
 
         var chatClient = _client.GetChatClient(_settings.ChatDeployment);
 

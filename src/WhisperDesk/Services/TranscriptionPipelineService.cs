@@ -7,7 +7,8 @@ public class TranscriptionPipelineService
 {
     private readonly ILogger<TranscriptionPipelineService> _logger;
     private readonly AudioRecorderService _recorder;
-    private readonly AzureWhisperService _whisperService;
+    private readonly ISpeechToTextService _sttService;
+    private readonly ITextCleanupService _cleanupService;
     private readonly TranscriptionLogService _logService;
 
     public event EventHandler<AppStatus>? StatusChanged;
@@ -19,12 +20,14 @@ public class TranscriptionPipelineService
     public TranscriptionPipelineService(
         ILogger<TranscriptionPipelineService> logger,
         AudioRecorderService recorder,
-        AzureWhisperService whisperService,
+        ISpeechToTextService sttService,
+        ITextCleanupService cleanupService,
         TranscriptionLogService logService)
     {
         _logger = logger;
         _recorder = recorder;
-        _whisperService = whisperService;
+        _sttService = sttService;
+        _cleanupService = cleanupService;
         _logService = logService;
     }
 
@@ -82,9 +85,9 @@ public class TranscriptionPipelineService
 
     private async Task ProcessAudioAsync(byte[] audioData, string? sourceFile = null, CancellationToken ct = default)
     {
-        // Step 1: Transcribe
+        // Step 1: Transcribe via configured STT provider
         StatusChanged?.Invoke(this, AppStatus.Transcribing);
-        var rawText = await _whisperService.TranscribeAsync(audioData, ct: ct);
+        var rawText = await _sttService.TranscribeAsync(audioData, ct: ct);
 
         if (string.IsNullOrWhiteSpace(rawText))
         {
@@ -93,9 +96,9 @@ public class TranscriptionPipelineService
             return;
         }
 
-        // Step 2: Clean up with LLM
+        // Step 2: Clean up via configured cleanup provider
         StatusChanged?.Invoke(this, AppStatus.Cleaning);
-        var cleanedText = await _whisperService.CleanupTextAsync(rawText, ct);
+        var cleanedText = await _cleanupService.CleanupTextAsync(rawText, ct);
 
         // Step 3: Store result
         LastCleanedText = cleanedText;
