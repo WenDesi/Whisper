@@ -1,0 +1,37 @@
+# WhisperDesk build and IDE
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.cache
+*.nupkg
+*.snupkg
+launchSettings.json
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# Secrets - NEVER commit
+appsettings.Development.json
+*.pfx
+*.key
+*.pem
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+transcription-history.log
+
+# Audio test files
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.flac
