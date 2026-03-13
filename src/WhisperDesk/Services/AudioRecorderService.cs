@@ -10,8 +10,8 @@ public class AudioRecorderService : IDisposable
     private readonly ILogger<AudioRecorderService> _logger;
     private readonly AudioSettings _audioSettings;
     private WaveInEvent? _waveIn;
-    private MemoryStream? _memoryStream;
     private WaveFileWriter? _waveWriter;
+    private string? _tempRecordingPath;
     private bool _isRecording;
 
     public bool IsRecording => _isRecording;
@@ -28,8 +28,11 @@ public class AudioRecorderService : IDisposable
     {
         if (_isRecording) return;
 
-        _memoryStream = new MemoryStream();
         var waveFormat = new WaveFormat(_audioSettings.SampleRate, _audioSettings.BitsPerSample, _audioSettings.Channels);
+
+        // Write to a temp file so WAV header is always correct
+        _tempRecordingPath = Path.Combine(Path.GetTempPath(), $"whisperdesk_{Guid.NewGuid():N}.wav");
+        _waveWriter = new WaveFileWriter(_tempRecordingPath, waveFormat);
 
         _waveIn = new WaveInEvent
         {
@@ -37,15 +40,13 @@ public class AudioRecorderService : IDisposable
             BufferMilliseconds = 50
         };
 
-        _waveWriter = new WaveFileWriter(_memoryStream, waveFormat);
-
         _waveIn.DataAvailable += OnDataAvailable;
         _waveIn.RecordingStopped += OnRecordingStopped;
         _waveIn.StartRecording();
         _isRecording = true;
 
-        _logger.LogInformation("Recording started (sample rate: {SampleRate}, channels: {Channels})",
-            _audioSettings.SampleRate, _audioSettings.Channels);
+        _logger.LogInformation("Recording started (sample rate: {SampleRate}, channels: {Channels}, file: {Path})",
+            _audioSettings.SampleRate, _audioSettings.Channels, _tempRecordingPath);
     }
 
     public byte[] StopRecording()
@@ -55,10 +56,32 @@ public class AudioRecorderService : IDisposable
         _waveIn.StopRecording();
         _isRecording = false;
 
-        _waveWriter?.Flush();
+        // Dispose writer to finalize WAV header with correct data length
+        _waveWriter?.Dispose();
+        _waveWriter = null;
 
-        var audioData = _memoryStream?.ToArray() ?? [];
-        _logger.LogInformation("Recording stopped. Audio size: {Size} bytes", audioData.Length);
+        // Read back the complete, valid WAV file
+        byte[] audioData = [];
+        if (_tempRecordingPath != null && File.Exists(_tempRecordingPath))
+        {
+            audioData = File.ReadAllBytes(_tempRecordingPath);
+            _logger.LogInformation("Recording stopped. Audio size: {Size} bytes, file: {Path}",
+                audioData.Length, _tempRecordingPath);
+
+            // Log WAV header info for diagnostics
+            if (audioData.Length >= 44)
+            {
+                var riff = System.Text.Encoding.ASCII.GetString(audioData, 0, 4);
+                var fileSize = BitConverter.ToInt32(audioData, 4);
+                var dataSize = BitConverter.ToInt32(audioData, 40);
+                _logger.LogDebug("WAV header: RIFF={Riff}, FileSize={FileSize}, DataSize={DataSize}",
+                    riff, fileSize, dataSize);
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Recording temp file not found: {Path}", _tempRecordingPath);
+        }
 
         CleanupRecording();
         return audioData;
@@ -108,12 +131,19 @@ public class AudioRecorderService : IDisposable
 
     private void CleanupRecording()
     {
-        _waveWriter?.Dispose();
-        _waveWriter = null;
+        if (_waveWriter != null)
+        {
+            _waveWriter.Dispose();
+            _waveWriter = null;
+        }
         _waveIn?.Dispose();
         _waveIn = null;
-        // Don't dispose _memoryStream here - we return its data
-        _memoryStream = null;
+        // Clean up temp recording file
+        if (_tempRecordingPath != null)
+        {
+            try { File.Delete(_tempRecordingPath); } catch { /* ignore */ }
+            _tempRecordingPath = null;
+        }
     }
 
     public void Dispose()

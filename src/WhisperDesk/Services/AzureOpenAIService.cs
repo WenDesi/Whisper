@@ -23,7 +23,9 @@ public class AzureOpenAIService : ITextCleanupService
 
     public async Task<string> CleanupTextAsync(string rawText, CancellationToken ct = default)
     {
-        _logger.LogInformation("Cleaning up transcription text via {Model}...", _settings.ChatDeployment);
+        _logger.LogInformation("[TextCleanup] Starting cleanup via {Model}, input ({Length} chars): {Text}",
+            _settings.ChatDeployment, rawText.Length, rawText);
+        _logger.LogDebug("[TextCleanup] Endpoint: {Endpoint}", _settings.Endpoint);
 
         var chatClient = new ChatClient(
             credential: new ApiKeyCredential(_settings.ApiKey),
@@ -49,11 +51,12 @@ public class AzureOpenAIService : ITextCleanupService
             new UserChatMessage(rawText)
         };
 
+        _logger.LogDebug("[TextCleanup] Sending request to {Model}...", _settings.ChatDeployment);
         var response = await chatClient.CompleteChatAsync(messages, cancellationToken: ct);
         var cleanedText = response.Value.Content[0].Text;
 
-        _logger.LogInformation("Cleanup complete: {RawLen} -> {CleanLen} chars",
-            rawText.Length, cleanedText.Length);
+        _logger.LogInformation("[TextCleanup] Cleanup complete: {RawLen} -> {CleanLen} chars", rawText.Length, cleanedText.Length);
+        _logger.LogInformation("[TextCleanup] Output: {Text}", cleanedText);
 
         return cleanedText;
     }

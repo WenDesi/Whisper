@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Hardcodet.Wpf.TaskbarNotification;
@@ -66,9 +67,13 @@ public partial class App : Application
         services.AddSingleton(settings.Transcription);
 
         // Logging
+        var logFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WhisperDesk", "whisperdesk.log");
         services.AddLogging(builder =>
         {
             builder.AddConsole();
+            builder.AddProvider(new FileLoggerProvider(logFilePath));
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
