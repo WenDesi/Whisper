@@ -1,4 +1,7 @@
+using System.IO;
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
 using WhisperDesk.ViewModels;
 
 namespace WhisperDesk.Views;
@@ -9,6 +12,18 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+
+        // Set window icon explicitly so taskbar shows it even when run via dotnet run
+        // Use 256x256 size from the ico file for crisp taskbar display
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        if (File.Exists(iconPath))
+        {
+            using var icon = new System.Drawing.Icon(iconPath, 256, 256);
+            Icon = Imaging.CreateBitmapSourceFromHIcon(
+                icon.Handle,
+                Int32Rect.Empty,
+                BitmapSizeOptions.FromEmptyOptions());
+        }
     }
 
     private void Window_StateChanged(object sender, EventArgs e)
