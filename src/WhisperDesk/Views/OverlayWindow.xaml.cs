@@ -110,9 +110,9 @@ public partial class OverlayWindow : Window
         var helper = new WindowInteropHelper(this);
         helper.EnsureHandle();
 
-        // Position at top-center of primary screen
+        // Position at bottom-center of primary screen (above taskbar)
         Left = (SystemParameters.PrimaryScreenWidth - 200) / 2;
-        Top = 12;
+        Top = SystemParameters.WorkArea.Height - 110;
 
         Show();
     }
