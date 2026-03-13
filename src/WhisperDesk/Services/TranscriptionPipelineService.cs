@@ -33,8 +33,9 @@ public class TranscriptionPipelineService
         try
         {
             _logger.LogInformation("[Pipeline] StartRecording — starting STT listening...");
-            await _sttService.StartListeningAsync();
+            // Show Listening status IMMEDIATELY — don't wait for SDK
             StatusChanged?.Invoke(this, AppStatus.Listening);
+            await _sttService.StartListeningAsync();
             _logger.LogInformation("[Pipeline] Now listening for speech...");
         }
         catch (Exception ex)
