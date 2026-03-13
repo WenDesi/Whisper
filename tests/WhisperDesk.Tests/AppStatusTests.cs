@@ -37,11 +37,23 @@ public class AppStatusTests
     {
         var settings = new WhisperDeskSettings();
 
+        // Azure OpenAI defaults
         Assert.Equal("whisper", settings.AzureOpenAI.WhisperDeployment);
         Assert.Equal("gpt-4o", settings.AzureOpenAI.ChatDeployment);
+
+        // Azure Speech defaults
+        Assert.Equal("zh-CN", settings.AzureSpeech.Language);
+
+        // Hotkey defaults
         Assert.Equal("Ctrl+Shift+R", settings.Hotkeys.PushToTalk);
         Assert.Equal("Ctrl+Shift+V", settings.Hotkeys.PasteTranscription);
+
+        // Audio defaults
         Assert.Equal(16000, settings.Audio.SampleRate);
+
+        // Transcription defaults - provider selection
+        Assert.Equal("AzureSpeech", settings.Transcription.SpeechProvider);
+        Assert.Equal("AzureOpenAI", settings.Transcription.CleanupProvider);
         Assert.Equal("zh", settings.Transcription.Language);
     }
 }

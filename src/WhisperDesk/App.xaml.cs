@@ -60,6 +60,7 @@ public partial class App : Application
         // Register settings
         services.AddSingleton(settings);
         services.AddSingleton(settings.AzureOpenAI);
+        services.AddSingleton(settings.AzureSpeech);
         services.AddSingleton(settings.Hotkeys);
         services.AddSingleton(settings.Audio);
         services.AddSingleton(settings.Transcription);
@@ -71,9 +72,39 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
+        // Register concrete service types (needed for DI resolution)
+        services.AddSingleton<AzureSpeechService>();
+        services.AddSingleton<AzureOpenAIService>();
+
+        // Register STT provider based on config
+        var sttProvider = settings.Transcription.SpeechProvider.ToLowerInvariant();
+        switch (sttProvider)
+        {
+            case "azurespeech":
+                services.AddSingleton<ISpeechToTextService>(sp => sp.GetRequiredService<AzureSpeechService>());
+                break;
+            case "azureopenai":
+                services.AddSingleton<ISpeechToTextService>(sp => sp.GetRequiredService<AzureOpenAIService>());
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown SpeechProvider '{settings.Transcription.SpeechProvider}'. Use 'AzureSpeech' or 'AzureOpenAI'.");
+        }
+
+        // Register text cleanup provider based on config
+        var cleanupProvider = settings.Transcription.CleanupProvider.ToLowerInvariant();
+        switch (cleanupProvider)
+        {
+            case "azureopenai":
+                services.AddSingleton<ITextCleanupService>(sp => sp.GetRequiredService<AzureOpenAIService>());
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown CleanupProvider '{settings.Transcription.CleanupProvider}'. Use 'AzureOpenAI'.");
+        }
+
         // Services
         services.AddSingleton<AudioRecorderService>();
-        services.AddSingleton<AzureWhisperService>();
         services.AddSingleton<TranscriptionLogService>();
         services.AddSingleton<TranscriptionPipelineService>();
         services.AddSingleton<HotkeyService>();
