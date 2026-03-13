@@ -1,12 +1,17 @@
 namespace WhisperDesk.Services;
 
 /// <summary>
-/// Speech-to-text provider interface. Implementations can be swapped via config.
+/// Speech-to-text provider interface. Uses microphone directly.
 /// </summary>
 public interface ISpeechToTextService
 {
     /// <summary>
-    /// Transcribe audio data (WAV format, 16kHz, 16-bit, mono) to text.
+    /// Start listening from the default microphone.
     /// </summary>
-    Task<string> TranscribeAsync(byte[] audioData, string? language = null, CancellationToken ct = default);
+    Task StartListeningAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Stop listening and return the transcribed text.
+    /// </summary>
+    Task<string> StopListeningAsync();
 }

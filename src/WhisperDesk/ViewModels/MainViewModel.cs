@@ -43,8 +43,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ILogger<MainViewModel> logger,
         TranscriptionPipelineService pipeline,
         HotkeyService hotkeyService,
-        ClipboardPasteService pasteService,
-        AudioRecorderService recorder)
+        ClipboardPasteService pasteService)
     {
         _logger = logger;
         _pipeline = pipeline;
@@ -59,11 +58,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _hotkeyService.PushToTalkPressed += OnPushToTalkPressed;
         _hotkeyService.PushToTalkReleased += OnPushToTalkReleased;
         _hotkeyService.PasteHotkeyPressed += OnPasteHotkeyPressed;
-
-        recorder.AudioLevelChanged += (_, level) =>
-        {
-            Application.Current?.Dispatcher.Invoke(() => AudioLevel = level);
-        };
 
         // Start hotkey listener
         _hotkeyService.Start();
