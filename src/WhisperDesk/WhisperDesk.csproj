@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <!--<ApplicationIcon>Assets\app.ico</ApplicationIcon>-->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>WhisperDesk</AssemblyName>
     <RootNamespace>WhisperDesk</RootNamespace>
     <Version>0.1.0</Version>
@@ -54,6 +54,10 @@
     <None Update="appsettings.Development.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <Resource Include="Assets\app.ico" />
+    <Content Include="Assets\app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

@@ -127,8 +127,11 @@ public partial class App : Application
             Visibility = Visibility.Visible
         };
 
-        // Use default app icon
-        _trayIcon.Icon = SystemIcons.Application;
+        // Use custom app icon for tray
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        _trayIcon.Icon = File.Exists(iconPath)
+            ? new System.Drawing.Icon(iconPath)
+            : SystemIcons.Application;
 
         // Context menu
         var contextMenu = new System.Windows.Controls.ContextMenu();
