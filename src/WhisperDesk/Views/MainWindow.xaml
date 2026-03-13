@@ -7,7 +7,7 @@
         xmlns:vm="clr-namespace:WhisperDesk.ViewModels"
         mc:Ignorable="d"
         Title="WhisperDesk"
-        Icon="/Assets/app.ico"
+        Icon="pack://application:,,,/Assets/app.ico"
         Width="520" Height="680"
         MinWidth="420" MinHeight="500"
         WindowStartupLocation="CenterScreen"

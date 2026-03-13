@@ -1,6 +1,8 @@
 # WhisperDesk build and IDE
 bin/
 obj/
+build/
+publish/
 .vs/
 *.user
 *.suo

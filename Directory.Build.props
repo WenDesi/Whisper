@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Redirect build artifacts to repo-level build/ directory.
+         Required for WPF projects in flattened directories (src/, tests/)
+         to prevent temp project from scanning obj/ generated files. -->
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)build\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)build\bin\$(MSBuildProjectName)\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

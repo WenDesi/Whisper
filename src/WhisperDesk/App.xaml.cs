@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows;
@@ -74,8 +75,11 @@ public partial class App : Application
     private void ConfigureServices(IServiceCollection services)
     {
         // Configuration
+        // For single-file publish, AppContext.BaseDirectory points to the temp extraction dir.
+        // Use the exe's actual location so appsettings.json sits next to the exe.
+        var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
         var config = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
+            .SetBasePath(exeDir)
             .AddJsonFile("appsettings.json", optional: false)
             .AddJsonFile("appsettings.Development.json", optional: true)
             .Build();
@@ -152,10 +156,10 @@ public partial class App : Application
             Visibility = Visibility.Visible
         };
 
-        // Use custom app icon for tray
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
-        _trayIcon.Icon = File.Exists(iconPath)
-            ? new System.Drawing.Icon(iconPath)
+        // Use custom app icon for tray (loaded from embedded resource)
+        var iconStream = GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"))?.Stream;
+        _trayIcon.Icon = iconStream != null
+            ? new System.Drawing.Icon(iconStream)
             : SystemIcons.Application;
 
         // Context menu

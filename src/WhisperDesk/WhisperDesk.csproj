@@ -14,6 +14,37 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- ============================================================
+       Publish configuration: self-contained, single-file executable
+       Run: dotnet publish -c Release  (or use build-release.ps1)
+       ============================================================ -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- Self-contained: bundle .NET runtime so users don't need to install it -->
+    <SelfContained>true</SelfContained>
+
+    <!-- Single-file: pack managed assemblies into one exe -->
+    <PublishSingleFile>true</PublishSingleFile>
+
+    <!-- Include native DLLs inside the single exe (extracted at first run) -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- Include all content in the single file by default -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+
+    <!-- ReadyToRun: ahead-of-time compilation for faster startup -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+
+    <!--
+      Trimming: WPF, DI, MaterialDesign, and Azure SDK rely heavily on reflection.
+      Full trimming breaks them. Disable trimming to keep things reliable.
+      Trade-off: ~30-50 MB larger, but zero runtime surprises.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!-- Compress the single-file bundle for smaller download -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- OpenAI SDK (Azure OpenAI compatible) -->
     <PackageReference Include="OpenAI" Version="2.2.0" />
@@ -49,16 +80,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- appsettings.json: EXCLUDED from single-file so users can edit it alongside the exe -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Update="appsettings.Development.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
+    <!-- App icon: embedded as WPF Resource so it works in single-file publish -->
     <Resource Include="Assets\app.ico" />
-    <Content Include="Assets\app.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
   </ItemGroup>
 
 </Project>
