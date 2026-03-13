@@ -18,6 +18,7 @@ public partial class App : Application
     private IServiceProvider? _serviceProvider;
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
+    private OverlayWindow? _overlayWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -32,7 +33,11 @@ public partial class App : Application
         _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
         _mainWindow.Show();
 
-        // Wire tray tooltip updates
+        // Create overlay window with paste service
+        _overlayWindow = new OverlayWindow();
+        _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
+
+        // Wire tray tooltip + overlay updates
         var pipeline = _serviceProvider.GetRequiredService<TranscriptionPipelineService>();
         pipeline.StatusChanged += (_, status) =>
         {
@@ -42,6 +47,24 @@ public partial class App : Application
                 {
                     _trayIcon.ToolTipText = status.ToTrayTooltip();
                 }
+
+                // Show/hide overlay based on status
+                if (status == AppStatus.Idle)
+                {
+                    _overlayWindow?.HideOverlay();
+                }
+                else
+                {
+                    _overlayWindow?.ShowForStatus(status);
+                }
+            });
+        };
+
+        pipeline.ErrorOccurred += (_, error) =>
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _overlayWindow?.ShowForStatus(AppStatus.Error, error);
             });
         };
     }
@@ -153,6 +176,7 @@ public partial class App : Application
     private void ExitApplication()
     {
         _trayIcon?.Dispose();
+        _overlayWindow?.Close();
         _mainWindow?.ForceClose();
 
         if (_serviceProvider is IDisposable disposable)
