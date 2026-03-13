@@ -13,8 +13,7 @@ public class AzureOpenAISettings
 {
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
-    public string WhisperDeployment { get; set; } = "whisper";
-    public string ChatDeployment { get; set; } = "gpt-4o";
+    public string ChatDeployment { get; set; } = "gpt-5-mini";
 }
 
 public class AzureSpeechSettings
@@ -40,7 +39,7 @@ public class AudioSettings
 public class TranscriptionSettings
 {
     /// <summary>
-    /// Speech-to-text provider: "AzureSpeech" or "AzureOpenAI"
+    /// Speech-to-text provider: "AzureSpeech"
     /// </summary>
     public string SpeechProvider { get; set; } = "AzureSpeech";
 
