@@ -33,8 +33,10 @@ public partial class App : Application
         _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
         _mainWindow.Show();
 
-        // Create overlay window with paste service
+        // Create overlay window — always visible but transparent until needed
+        // No Show/Hide toggling = no focus stealing
         _overlayWindow = new OverlayWindow();
+        _overlayWindow.Initialize();
         _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
 
         // Wire tray tooltip + overlay updates

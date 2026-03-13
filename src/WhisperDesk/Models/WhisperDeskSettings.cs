@@ -26,7 +26,7 @@ public class AzureSpeechSettings
 
 public class HotkeySettings
 {
-    public string PushToTalk { get; set; } = "Ctrl+Shift+R";
+    public string PushToTalk { get; set; } = "F9";
     public string PasteTranscription { get; set; } = "Ctrl+Shift+V";
 }
 

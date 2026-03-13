@@ -26,6 +26,13 @@ public partial class OverlayWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TRANSPARENT = 0x00000020;
 
+    // Win32 ShowWindow to avoid focus stealing
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(nint hWnd, int nCmdShow);
+
+    private const int SW_SHOWNOACTIVATE = 4;
+    private const int SW_HIDE = 0;
+
     // Win32 for caret position, cursor position, and DPI
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -80,9 +87,6 @@ public partial class OverlayWindow : Window
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-            // NOACTIVATE: never steal focus
-            // TOOLWINDOW: hide from Alt+Tab
-            // TRANSPARENT: click-through
             SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT);
         };
 
@@ -92,6 +96,25 @@ public partial class OverlayWindow : Window
             _autoHideTimer.Stop();
             HideOverlay();
         };
+
+        // Start invisible (opacity 0)
+        RootContainer.Opacity = 0;
+    }
+
+    /// <summary>
+    /// Call once at startup to make the window permanently visible (but transparent).
+    /// Positions at top-center of screen.
+    /// </summary>
+    public void Initialize()
+    {
+        var helper = new WindowInteropHelper(this);
+        helper.EnsureHandle();
+
+        // Position at top-center of primary screen
+        Left = (SystemParameters.PrimaryScreenWidth - 200) / 2;
+        Top = 12;
+
+        Show();
     }
 
     public void SetPasteService(ClipboardPasteService pasteService)
@@ -128,15 +151,9 @@ public partial class OverlayWindow : Window
                     return;
             }
 
-            // Only reposition when first appearing (Listening state)
-            if (status == AppStatus.Listening)
+            // Fade in via opacity — window is always "shown", no Show() call
+            if (RootContainer.Opacity < 0.1)
             {
-                PositionNearCursor();
-            }
-
-            if (!IsVisible)
-            {
-                Show();
                 var fadeIn = (Storyboard)FindResource("FadeIn");
                 fadeIn.Begin(this);
             }
@@ -199,7 +216,14 @@ public partial class OverlayWindow : Window
         SpinnerPanel.Visibility = Visibility.Collapsed;
         CheckIcon.Visibility = Visibility.Visible;
         ErrorIcon.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Copied!  Ctrl+Shift+V to paste";
+        StatusText.Text = "Pasted!";
+
+        // Auto-paste to active window
+        Task.Run(async () =>
+        {
+            await Task.Delay(150);
+            Dispatcher.Invoke(() => _pasteService?.PasteToActiveWindow());
+        });
 
         // Auto-hide after 2 seconds
         _autoHideTimer!.Interval = TimeSpan.FromSeconds(2);
@@ -227,14 +251,10 @@ public partial class OverlayWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (!IsVisible) return;
+            if (RootContainer.Opacity < 0.1) return;
 
             var fadeOut = (Storyboard)FindResource("FadeOut");
-            fadeOut.Completed += (_, _) =>
-            {
-                Hide();
-                StopActiveAnimations();
-            };
+            fadeOut.Completed += (_, _) => StopActiveAnimations();
             fadeOut.Begin(this);
         });
     }
