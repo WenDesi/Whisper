@@ -1,7 +1,5 @@
-using System.IO;
-using Azure;
-using Azure.AI.OpenAI;
-using OpenAI.Audio;
+using System.ClientModel;
+using OpenAI;
 using OpenAI.Chat;
 using WhisperDesk.Models;
 using Microsoft.Extensions.Logging;
@@ -9,56 +7,31 @@ using Microsoft.Extensions.Logging;
 namespace WhisperDesk.Services;
 
 /// <summary>
-/// Azure OpenAI Whisper for STT + GPT for text cleanup.
-/// Can serve as both ISpeechToTextService and ITextCleanupService.
+/// GPT text cleanup service via Azure OpenAI-compatible endpoint.
+/// Uses OpenAI SDK with ApiKeyCredential + custom endpoint.
 /// </summary>
-public class AzureOpenAIService : ISpeechToTextService, ITextCleanupService
+public class AzureOpenAIService : ITextCleanupService
 {
     private readonly ILogger<AzureOpenAIService> _logger;
     private readonly AzureOpenAISettings _settings;
-    private readonly AzureOpenAIClient _client;
 
     public AzureOpenAIService(ILogger<AzureOpenAIService> logger, AzureOpenAISettings settings)
     {
         _logger = logger;
         _settings = settings;
-        _client = new AzureOpenAIClient(
-            new Uri(settings.Endpoint),
-            new AzureKeyCredential(settings.ApiKey));
-    }
-
-    public async Task<string> TranscribeAsync(byte[] audioData, string? language = null, CancellationToken ct = default)
-    {
-        _logger.LogInformation("Transcribing audio ({Size} bytes) via Azure OpenAI Whisper...", audioData.Length);
-
-        var audioClient = _client.GetAudioClient(_settings.WhisperDeployment);
-
-        using var audioStream = new MemoryStream(audioData);
-
-        var options = new AudioTranscriptionOptions
-        {
-            Language = language ?? "zh",
-            Prompt = "This audio contains Chinese speech with occasional English technical terms.",
-            ResponseFormat = AudioTranscriptionFormat.Text
-        };
-
-        var result = await audioClient.TranscribeAudioAsync(
-            audioStream,
-            "recording.wav",
-            options,
-            ct);
-
-        var text = result.Value.Text;
-        _logger.LogInformation("Transcription complete: {Length} chars", text.Length);
-
-        return text;
     }
 
     public async Task<string> CleanupTextAsync(string rawText, CancellationToken ct = default)
     {
-        _logger.LogInformation("Cleaning up transcription text via Azure OpenAI...");
+        _logger.LogInformation("Cleaning up transcription text via {Model}...", _settings.ChatDeployment);
 
-        var chatClient = _client.GetChatClient(_settings.ChatDeployment);
+        var chatClient = new ChatClient(
+            credential: new ApiKeyCredential(_settings.ApiKey),
+            model: _settings.ChatDeployment,
+            options: new OpenAIClientOptions
+            {
+                Endpoint = new Uri(_settings.Endpoint)
+            });
 
         var messages = new List<ChatMessage>
         {

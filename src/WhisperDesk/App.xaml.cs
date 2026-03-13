@@ -83,12 +83,9 @@ public partial class App : Application
             case "azurespeech":
                 services.AddSingleton<ISpeechToTextService>(sp => sp.GetRequiredService<AzureSpeechService>());
                 break;
-            case "azureopenai":
-                services.AddSingleton<ISpeechToTextService>(sp => sp.GetRequiredService<AzureOpenAIService>());
-                break;
             default:
                 throw new InvalidOperationException(
-                    $"Unknown SpeechProvider '{settings.Transcription.SpeechProvider}'. Use 'AzureSpeech' or 'AzureOpenAI'.");
+                    $"Unknown SpeechProvider '{settings.Transcription.SpeechProvider}'. Use 'AzureSpeech'.");
         }
 
         // Register text cleanup provider based on config
