@@ -1,14 +1,16 @@
+using System.Collections.Concurrent;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
-using NAudio.CoreAudioApi;
+using NAudio.Wave;
 using WhisperDesk.Models;
 using Microsoft.Extensions.Logging;
 
 namespace WhisperDesk.Services;
 
 /// <summary>
-/// Speech-to-text using Azure AI Speech Service with direct microphone input.
-/// Supports continuous recognition with Chinese + English code-switching.
+/// Speech-to-text using Azure AI Speech Service with PushAudioInputStream.
+/// Starts NAudio microphone capture immediately, buffers audio while SDK connects,
+/// then flushes buffer + continues streaming — zero audio loss.
 /// </summary>
 public class AzureSpeechService : ISpeechToTextService, IDisposable
 {
@@ -16,9 +18,16 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
     private readonly AzureSpeechSettings _settings;
 
     private SpeechRecognizer? _recognizer;
+    private PushAudioInputStream? _pushStream;
     private AudioConfig? _audioConfig;
+    private WaveInEvent? _waveIn;
+
     private List<string> _results = new();
     private TaskCompletionSource<bool>? _sessionTcs;
+
+    // Buffer for audio captured before SDK is ready
+    private readonly ConcurrentQueue<byte[]> _audioBuffer = new();
+    private volatile bool _sdkReady;
 
     public AzureSpeechService(ILogger<AzureSpeechService> logger, AzureSpeechSettings settings)
     {
@@ -28,44 +37,29 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
 
     public async Task StartListeningAsync(CancellationToken ct = default)
     {
-        _logger.LogInformation("[AzureSpeech] StartListening — setting up recognizer...");
-        _logger.LogDebug("[AzureSpeech] Region: {Region}", _settings.Region);
+        _logger.LogInformation("[AzureSpeech] StartListening — starting mic capture + SDK setup in parallel...");
 
-        // Log available microphones and default device
-        try
-        {
-            var enumerator = new MMDeviceEnumerator();
-            var defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
-            _logger.LogInformation("[AzureSpeech] Default microphone: {Name} (Volume: {Volume:P0})",
-                defaultDevice.FriendlyName, defaultDevice.AudioEndpointVolume.MasterVolumeLevelScalar);
+        _sdkReady = false;
+        _results = new List<string>();
+        _sessionTcs = new TaskCompletionSource<bool>();
 
-            var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
-            foreach (var device in devices)
-            {
-                _logger.LogDebug("[AzureSpeech] Available mic: {Name}{Default}",
-                    device.FriendlyName,
-                    device.ID == defaultDevice.ID ? " [DEFAULT]" : "");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[AzureSpeech] Could not enumerate microphones");
-        }
+        // 1. Start microphone capture IMMEDIATELY via NAudio
+        StartMicCapture();
+        _logger.LogInformation("[AzureSpeech] Microphone capture started (buffering audio)...");
 
+        // 2. Set up Azure Speech SDK in parallel (this takes ~500ms)
         var speechConfig = SpeechConfig.FromSubscription(
             _settings.SubscriptionKey,
             _settings.Region);
 
-        // Enable auto language detection for Chinese + English mixed speech
         var autoDetectConfig = AutoDetectSourceLanguageConfig.FromLanguages(
             new[] { "zh-CN", "en-US" });
 
-        // Use default microphone directly — no NAudio, no temp files
-        _audioConfig = AudioConfig.FromDefaultMicrophoneInput();
+        // Use PushAudioInputStream so we control what audio goes in
+        var audioFormat = AudioStreamFormat.GetWaveFormatPCM(16000, 16, 1);
+        _pushStream = AudioInputStream.CreatePushStream(audioFormat);
+        _audioConfig = AudioConfig.FromStreamInput(_pushStream);
         _recognizer = new SpeechRecognizer(speechConfig, autoDetectConfig, _audioConfig);
-
-        _results = new List<string>();
-        _sessionTcs = new TaskCompletionSource<bool>();
 
         _recognizer.Recognizing += (_, e) =>
         {
@@ -113,18 +107,28 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
         ct.Register(() => _sessionTcs?.TrySetCanceled());
 
         await _recognizer.StartContinuousRecognitionAsync();
-        _logger.LogInformation("[AzureSpeech] Now listening from microphone...");
+
+        // 3. SDK is now ready — flush buffered audio
+        _sdkReady = true;
+        FlushBufferedAudio();
+
+        _logger.LogInformation("[AzureSpeech] SDK ready. Buffered audio flushed. Now streaming live.");
     }
 
     public async Task<string> StopListeningAsync()
     {
         _logger.LogInformation("[AzureSpeech] StopListening requested...");
 
+        // Stop microphone capture first
+        StopMicCapture();
+
+        // Close the push stream to signal end of audio
+        _pushStream?.Close();
+
         if (_recognizer != null)
         {
             await _recognizer.StopContinuousRecognitionAsync();
 
-            // Wait briefly for final results to arrive
             if (_sessionTcs != null)
             {
                 await Task.WhenAny(_sessionTcs.Task, Task.Delay(3000));
@@ -136,6 +140,7 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
 
         _audioConfig?.Dispose();
         _audioConfig = null;
+        _pushStream = null;
 
         var fullText = string.Join("", _results);
         _logger.LogInformation("[AzureSpeech] Transcription complete: {Length} chars from {Segments} segments",
@@ -143,7 +148,7 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
 
         if (fullText.Length == 0)
         {
-            _logger.LogWarning("[AzureSpeech] No speech recognized. Check microphone input.");
+            _logger.LogWarning("[AzureSpeech] No speech recognized.");
         }
         else
         {
@@ -153,8 +158,67 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
         return fullText;
     }
 
+    private void StartMicCapture()
+    {
+        _waveIn = new WaveInEvent
+        {
+            WaveFormat = new WaveFormat(16000, 16, 1),
+            BufferMilliseconds = 50
+        };
+
+        _waveIn.DataAvailable += OnMicDataAvailable;
+        _waveIn.StartRecording();
+    }
+
+    private void StopMicCapture()
+    {
+        if (_waveIn != null)
+        {
+            _waveIn.StopRecording();
+            _waveIn.DataAvailable -= OnMicDataAvailable;
+            _waveIn.Dispose();
+            _waveIn = null;
+        }
+    }
+
+    private void OnMicDataAvailable(object? sender, WaveInEventArgs e)
+    {
+        if (e.BytesRecorded == 0) return;
+
+        var chunk = new byte[e.BytesRecorded];
+        Buffer.BlockCopy(e.Buffer, 0, chunk, 0, e.BytesRecorded);
+
+        if (_sdkReady)
+        {
+            // SDK is ready — push directly
+            _pushStream?.Write(chunk);
+        }
+        else
+        {
+            // SDK not ready yet — buffer for later
+            _audioBuffer.Enqueue(chunk);
+        }
+    }
+
+    private void FlushBufferedAudio()
+    {
+        int flushedChunks = 0;
+        while (_audioBuffer.TryDequeue(out var chunk))
+        {
+            _pushStream?.Write(chunk);
+            flushedChunks++;
+        }
+
+        if (flushedChunks > 0)
+        {
+            _logger.LogInformation("[AzureSpeech] Flushed {Count} buffered audio chunks to SDK", flushedChunks);
+        }
+    }
+
     public void Dispose()
     {
+        StopMicCapture();
+        _pushStream?.Close();
         _recognizer?.Dispose();
         _audioConfig?.Dispose();
         GC.SuppressFinalize(this);
