@@ -94,6 +94,7 @@ public partial class App : Application
         services.AddSingleton(settings.Hotkeys);
         services.AddSingleton(settings.Audio);
         services.AddSingleton(settings.Transcription);
+        services.AddSingleton(settings.Recording);
 
         // Logging
         var logFilePath = Path.Combine(

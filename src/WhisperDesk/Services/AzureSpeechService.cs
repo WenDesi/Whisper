@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using NAudio.Wave;
@@ -29,6 +30,10 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
     private readonly ConcurrentQueue<byte[]> _audioBuffer = new();
     private volatile bool _sdkReady;
 
+    // Recording buffer — accumulates all PCM audio for the current session
+    private MemoryStream? _recordingBuffer;
+    private readonly object _recordingLock = new();
+
     public AzureSpeechService(ILogger<AzureSpeechService> logger, AzureSpeechSettings settings)
     {
         _logger = logger;
@@ -42,6 +47,9 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
         _sdkReady = false;
         _results = new List<string>();
         _sessionTcs = new TaskCompletionSource<bool>();
+
+        // Initialize recording buffer for this session
+        InitializeRecordingBuffer();
 
         // 1. Start microphone capture IMMEDIATELY via NAudio
         StartMicCapture();
@@ -188,6 +196,12 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
         var chunk = new byte[e.BytesRecorded];
         Buffer.BlockCopy(e.Buffer, 0, chunk, 0, e.BytesRecorded);
 
+        // Always tee audio to recording buffer
+        lock (_recordingLock)
+        {
+            _recordingBuffer?.Write(chunk, 0, chunk.Length);
+        }
+
         if (_sdkReady)
         {
             // SDK is ready — push directly
@@ -215,12 +229,99 @@ public class AzureSpeechService : ISpeechToTextService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Initialize a fresh recording buffer for a new recording session.
+    /// </summary>
+    private void InitializeRecordingBuffer()
+    {
+        lock (_recordingLock)
+        {
+            _recordingBuffer?.Dispose();
+            _recordingBuffer = new MemoryStream();
+        }
+        _logger.LogDebug("[AzureSpeech] Recording buffer initialized");
+    }
+
+    /// <summary>
+    /// Get the current recording as a complete WAV file byte array.
+    /// Returns null if no audio has been buffered.
+    /// </summary>
+    public byte[]? GetRecordingAsWav()
+    {
+        byte[] pcmData;
+        lock (_recordingLock)
+        {
+            if (_recordingBuffer == null || _recordingBuffer.Length == 0)
+            {
+                _logger.LogWarning("[AzureSpeech] No recording data available");
+                return null;
+            }
+
+            pcmData = _recordingBuffer.ToArray();
+        }
+
+        _logger.LogInformation("[AzureSpeech] Building WAV from {Bytes} bytes of PCM data", pcmData.Length);
+
+        // Build WAV file: header + PCM data
+        // Format: 16kHz, 16-bit, mono (matching mic capture settings)
+        using var wavStream = new MemoryStream();
+        using (var writer = new BinaryWriter(wavStream, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            int sampleRate = 16000;
+            short bitsPerSample = 16;
+            short channels = 1;
+            int byteRate = sampleRate * channels * (bitsPerSample / 8);
+            short blockAlign = (short)(channels * (bitsPerSample / 8));
+
+            // RIFF header
+            writer.Write("RIFF"u8);
+            writer.Write(36 + pcmData.Length); // ChunkSize
+            writer.Write("WAVE"u8);
+
+            // fmt sub-chunk
+            writer.Write("fmt "u8);
+            writer.Write(16);             // SubChunk1Size (PCM)
+            writer.Write((short)1);       // AudioFormat (PCM = 1)
+            writer.Write(channels);
+            writer.Write(sampleRate);
+            writer.Write(byteRate);
+            writer.Write(blockAlign);
+            writer.Write(bitsPerSample);
+
+            // data sub-chunk
+            writer.Write("data"u8);
+            writer.Write(pcmData.Length);  // SubChunk2Size
+            writer.Write(pcmData);
+        }
+
+        return wavStream.ToArray();
+    }
+
+    /// <summary>
+    /// Returns true if there is recording data available to save.
+    /// </summary>
+    public bool HasRecordingData
+    {
+        get
+        {
+            lock (_recordingLock)
+            {
+                return _recordingBuffer != null && _recordingBuffer.Length > 0;
+            }
+        }
+    }
+
     public void Dispose()
     {
         StopMicCapture();
         _pushStream?.Close();
         _recognizer?.Dispose();
         _audioConfig?.Dispose();
+        lock (_recordingLock)
+        {
+            _recordingBuffer?.Dispose();
+            _recordingBuffer = null;
+        }
         GC.SuppressFinalize(this);
     }
 }
