@@ -7,6 +7,7 @@ public class WhisperDeskSettings
     public HotkeySettings Hotkeys { get; set; } = new();
     public AudioSettings Audio { get; set; } = new();
     public TranscriptionSettings Transcription { get; set; } = new();
+    public RecordingSettings Recording { get; set; } = new();
 }
 
 public class AzureOpenAISettings
@@ -52,4 +53,12 @@ public class TranscriptionSettings
     public string Language { get; set; } = "zh";
     public string Prompt { get; set; } = "This audio contains Chinese speech with occasional English technical terms like Redis, Kubernetes, Docker, API, SDK, Azure, etc.";
     public string LogFile { get; set; } = "transcription-history.log";
+}
+
+public class RecordingSettings
+{
+    /// <summary>
+    /// Directory path where recordings are saved. If empty, the save recording feature is disabled.
+    /// </summary>
+    public string SavePath { get; set; } = string.Empty;
 }

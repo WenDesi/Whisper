@@ -37,3 +37,5 @@ transcription-history.log
 *.m4a
 *.ogg
 *.flac
+*.weval
+test-recordings/
