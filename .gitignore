@@ -39,3 +39,6 @@ transcription-history.log
 *.flac
 *.weval
 test-recordings/
+
+# Claude Code
+.claude/
