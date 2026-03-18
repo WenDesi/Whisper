@@ -1,28 +1,29 @@
-using System.IO;
-using WhisperDesk.Models;
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Core.Models;
 
-namespace WhisperDesk.Services;
+namespace WhisperDesk.Core.Services;
 
+/// <summary>
+/// Thread-safe transcription logging to file.
+/// </summary>
 public class TranscriptionLogService
 {
     private readonly ILogger<TranscriptionLogService> _logger;
     private readonly string _logFilePath;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public TranscriptionLogService(ILogger<TranscriptionLogService> logger, TranscriptionSettings settings)
+    public TranscriptionLogService(ILogger<TranscriptionLogService> logger, string logFileName = "transcription-history.log")
     {
         _logger = logger;
 
         var appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "WhisperDesk");
-
         Directory.CreateDirectory(appDataDir);
-        _logFilePath = Path.Combine(appDataDir, settings.LogFile);
+        _logFilePath = Path.Combine(appDataDir, logFileName);
     }
 
-    public async Task LogTranscriptionAsync(TranscriptionResult result)
+    public async Task LogTranscriptionAsync(PipelineResult result)
     {
         await _writeLock.WaitAsync();
         try
@@ -34,10 +35,10 @@ public class TranscriptionLogService
                 Language: {result.Language}
 
                 --- Raw ---
-                {result.RawText}
+                {result.RawTranscript}
 
-                --- Cleaned ---
-                {result.CleanedText}
+                --- Processed ---
+                {result.ProcessedText}
 
                 """;
 

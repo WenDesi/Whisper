@@ -46,13 +46,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- OpenAI SDK (Azure OpenAI compatible) -->
-    <PackageReference Include="OpenAI" Version="2.2.0" />
-
-    <!-- Azure Speech SDK -->
-    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.42.0" />
-
-    <!-- Audio recording -->
+    <!-- Audio recording (needed directly for EvalDialogViewModel playback) -->
     <PackageReference Include="NAudio" Version="2.2.1" />
 
     <!-- MVVM framework -->
@@ -80,12 +74,20 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\WhisperDesk.Core\WhisperDesk.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- appsettings.json: EXCLUDED from single-file so users can edit it alongside the exe -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Update="appsettings.Development.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+    <None Update="hotwords.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
