@@ -7,29 +7,14 @@ public class AppStatusTests
 {
     [Theory]
     [InlineData(AppStatus.Idle, "Ready")]
-    [InlineData(AppStatus.Listening, "🎤 Listening...")]
-    [InlineData(AppStatus.Transcribing, "📝 Transcribing...")]
-    [InlineData(AppStatus.Cleaning, "✨ Cleaning up...")]
-    [InlineData(AppStatus.Ready, "✅ Done - ready to paste")]
-    [InlineData(AppStatus.Error, "❌ Error")]
+    [InlineData(AppStatus.Listening, "\U0001f3a4 Listening...")]
+    [InlineData(AppStatus.Transcribing, "\U0001f4dd Transcribing...")]
+    [InlineData(AppStatus.Cleaning, "\u2728 Cleaning up...")]
+    [InlineData(AppStatus.Ready, "\u2705 Done - ready to paste")]
+    [InlineData(AppStatus.Error, "\u274c Error")]
     public void ToDisplayString_ReturnsExpectedText(AppStatus status, string expected)
     {
         Assert.Equal(expected, status.ToDisplayString());
-    }
-
-    [Fact]
-    public void TranscriptionResult_DefaultValues()
-    {
-        var result = new TranscriptionResult
-        {
-            RawText = "test raw",
-            CleanedText = "test clean"
-        };
-
-        Assert.Equal("test raw", result.RawText);
-        Assert.Equal("test clean", result.CleanedText);
-        Assert.Equal("zh", result.Language);
-        Assert.Null(result.SourceFile);
     }
 
     [Fact]
@@ -38,14 +23,13 @@ public class AppStatusTests
         var settings = new WhisperDeskSettings();
 
         // Azure OpenAI defaults
-        Assert.Equal("whisper", settings.AzureOpenAI.WhisperDeployment);
-        Assert.Equal("gpt-4o", settings.AzureOpenAI.ChatDeployment);
+        Assert.Equal("gpt-5-mini", settings.AzureOpenAI.ChatDeployment);
 
         // Azure Speech defaults
         Assert.Equal("zh-CN", settings.AzureSpeech.Language);
 
         // Hotkey defaults
-        Assert.Equal("Ctrl+Shift+R", settings.Hotkeys.PushToTalk);
+        Assert.Equal("F9", settings.Hotkeys.PushToTalk);
         Assert.Equal("Ctrl+Shift+V", settings.Hotkeys.PasteTranscription);
 
         // Audio defaults

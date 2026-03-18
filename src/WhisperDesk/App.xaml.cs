@@ -7,6 +7,11 @@ using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Core.Configuration;
+using WhisperDesk.Core.Models;
+using WhisperDesk.Core.Pipeline;
+using WhisperDesk.Core.Providers.Llm.AzureOpenAI;
+using WhisperDesk.Core.Providers.Stt.Azure;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.ViewModels;
@@ -40,25 +45,25 @@ public partial class App : Application
         _overlayWindow.Initialize();
         _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
 
-        // Wire tray tooltip + overlay updates
-        var pipeline = _serviceProvider.GetRequiredService<TranscriptionPipelineService>();
-        pipeline.StatusChanged += (_, status) =>
+        // Wire tray tooltip + overlay updates via IPipelineController
+        var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
+        pipeline.StateChanged += (_, pipelineState) =>
         {
             Dispatcher.Invoke(() =>
             {
+                var appStatus = MapToAppStatus(pipelineState);
                 if (_trayIcon != null)
                 {
-                    _trayIcon.ToolTipText = status.ToTrayTooltip();
+                    _trayIcon.ToolTipText = appStatus.ToTrayTooltip();
                 }
 
-                // Show/hide overlay based on status
-                if (status == AppStatus.Idle)
+                if (appStatus == AppStatus.Idle)
                 {
                     _overlayWindow?.HideOverlay();
                 }
                 else
                 {
-                    _overlayWindow?.ShowForStatus(status);
+                    _overlayWindow?.ShowForStatus(appStatus);
                 }
             });
         };
@@ -67,7 +72,7 @@ public partial class App : Application
         {
             Dispatcher.Invoke(() =>
             {
-                _overlayWindow?.ShowForStatus(AppStatus.Error, error);
+                _overlayWindow?.ShowForStatus(AppStatus.Error, error.Message);
             });
         };
     }
@@ -87,13 +92,10 @@ public partial class App : Application
         var settings = new WhisperDeskSettings();
         config.Bind(settings);
 
-        // Register settings
+        // Register WPF-layer settings (hotkeys, recording, audio)
         services.AddSingleton(settings);
-        services.AddSingleton(settings.AzureOpenAI);
-        services.AddSingleton(settings.AzureSpeech);
         services.AddSingleton(settings.Hotkeys);
         services.AddSingleton(settings.Audio);
-        services.AddSingleton(settings.Transcription);
         services.AddSingleton(settings.Recording);
 
         // Logging
@@ -107,38 +109,39 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        // Register concrete service types (needed for DI resolution)
-        services.AddSingleton<AzureSpeechService>();
-        services.AddSingleton<AzureOpenAIService>();
-
-        // Register STT provider based on config
-        var sttProvider = settings.Transcription.SpeechProvider.ToLowerInvariant();
-        switch (sttProvider)
+        // Map old settings to Core config objects
+        var pipelineConfig = new PipelineConfig
         {
-            case "azurespeech":
-                services.AddSingleton<ISpeechToTextService>(sp => sp.GetRequiredService<AzureSpeechService>());
-                break;
-            default:
-                throw new InvalidOperationException(
-                    $"Unknown SpeechProvider '{settings.Transcription.SpeechProvider}'. Use 'AzureSpeech'.");
-        }
+            SttProvider = settings.Transcription.SpeechProvider,
+            LlmProvider = settings.Transcription.CleanupProvider,
+            Language = settings.Transcription.Language,
+            EnableTextCleanup = true,
+            Audio = new AudioFormatConfig
+            {
+                SampleRate = settings.Audio.SampleRate,
+                Channels = settings.Audio.Channels,
+                BitsPerSample = settings.Audio.BitsPerSample
+            }
+        };
 
-        // Register text cleanup provider based on config
-        var cleanupProvider = settings.Transcription.CleanupProvider.ToLowerInvariant();
-        switch (cleanupProvider)
+        var azureSttConfig = new AzureSttConfig
         {
-            case "azureopenai":
-                services.AddSingleton<ITextCleanupService>(sp => sp.GetRequiredService<AzureOpenAIService>());
-                break;
-            default:
-                throw new InvalidOperationException(
-                    $"Unknown CleanupProvider '{settings.Transcription.CleanupProvider}'. Use 'AzureOpenAI'.");
-        }
+            SubscriptionKey = settings.AzureSpeech.SubscriptionKey,
+            Region = settings.AzureSpeech.Region,
+            Endpoint = settings.AzureSpeech.Endpoint
+        };
 
-        // Services
-        services.AddSingleton<AudioRecorderService>();
-        services.AddSingleton<TranscriptionLogService>();
-        services.AddSingleton<TranscriptionPipelineService>();
+        var azureOpenAIConfig = new AzureOpenAILlmConfig
+        {
+            Endpoint = settings.AzureOpenAI.Endpoint,
+            ApiKey = settings.AzureOpenAI.ApiKey,
+            ChatDeployment = settings.AzureOpenAI.ChatDeployment
+        };
+
+        // Register Core pipeline services
+        services.AddWhisperDeskPipeline(pipelineConfig, azureSttConfig, azureOpenAIConfig);
+
+        // WPF-only services
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();
 
@@ -148,6 +151,17 @@ public partial class App : Application
         // Views
         services.AddSingleton<MainWindow>();
     }
+
+    private static AppStatus MapToAppStatus(PipelineState state) => state switch
+    {
+        PipelineState.Idle => AppStatus.Idle,
+        PipelineState.Listening => AppStatus.Listening,
+        PipelineState.Transcribing => AppStatus.Transcribing,
+        PipelineState.PostProcessing => AppStatus.Cleaning,
+        PipelineState.Completed => AppStatus.Ready,
+        PipelineState.Error => AppStatus.Error,
+        _ => AppStatus.Idle
+    };
 
     private void SetupTrayIcon()
     {

@@ -3,6 +3,9 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
+using WhisperDesk.Core.Pipeline;
+using WhisperDesk.Core.Models;
+using WhisperDesk.Core.Services;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.Views;
@@ -13,10 +16,10 @@ namespace WhisperDesk.ViewModels;
 public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly ILogger<MainViewModel> _logger;
-    private readonly TranscriptionPipelineService _pipeline;
+    private readonly IPipelineController _pipeline;
     private readonly HotkeyService _hotkeyService;
     private readonly ClipboardPasteService _pasteService;
-    private readonly AzureSpeechService _speechService;
+    private readonly TranscriptionLogService _logService;
     private readonly RecordingSettings _recordingSettings;
     private readonly ILoggerFactory _loggerFactory;
     private CancellationTokenSource? _cts;
@@ -32,6 +35,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _cleanedText = string.Empty;
+
+    [ObservableProperty]
+    private string _partialText = string.Empty;
 
     [ObservableProperty]
     private float _audioLevel;
@@ -54,10 +60,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public MainViewModel(
         ILogger<MainViewModel> logger,
         ILoggerFactory loggerFactory,
-        TranscriptionPipelineService pipeline,
+        IPipelineController pipeline,
         HotkeyService hotkeyService,
         ClipboardPasteService pasteService,
-        AzureSpeechService speechService,
+        TranscriptionLogService logService,
         RecordingSettings recordingSettings)
     {
         _logger = logger;
@@ -65,54 +71,73 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline = pipeline;
         _hotkeyService = hotkeyService;
         _pasteService = pasteService;
-        _speechService = speechService;
+        _logService = logService;
         _recordingSettings = recordingSettings;
 
-        // Show save button only if save path is configured
         IsSaveRecordingVisible = !string.IsNullOrWhiteSpace(_recordingSettings.SavePath);
 
-        // Wire up events
-        _pipeline.StatusChanged += OnStatusChanged;
-        _pipeline.TranscriptionCompleted += OnTranscriptionCompleted;
-        _pipeline.ErrorOccurred += OnErrorOccurred;
+        // Wire pipeline events
+        _pipeline.StateChanged += OnPipelineStateChanged;
+        _pipeline.SessionCompleted += OnSessionCompleted;
+        _pipeline.ErrorOccurred += OnPipelineError;
+        _pipeline.PartialTranscriptUpdated += OnPartialTranscript;
 
+        // Wire hotkey events
         _hotkeyService.PushToTalkPressed += OnPushToTalkPressed;
         _hotkeyService.PushToTalkReleased += OnPushToTalkReleased;
         _hotkeyService.PasteHotkeyPressed += OnPasteHotkeyPressed;
 
-        // Start hotkey listener
         _hotkeyService.Start();
     }
 
-    private void OnStatusChanged(object? sender, AppStatus status)
+    private void OnPipelineStateChanged(object? sender, PipelineState pipelineState)
     {
         Application.Current?.Dispatcher.Invoke(() =>
         {
-            Status = status;
-            StatusText = status.ToDisplayString();
-            IsRecording = status == AppStatus.Listening;
-            if (status != AppStatus.Error) HasError = false;
+            var appStatus = MapToAppStatus(pipelineState);
+            Status = appStatus;
+            StatusText = appStatus.ToDisplayString();
+            IsRecording = pipelineState == PipelineState.Listening;
+            if (appStatus != AppStatus.Error) HasError = false;
         });
     }
 
-    private void OnTranscriptionCompleted(object? sender, TranscriptionResult result)
+    private void OnSessionCompleted(object? sender, PipelineResult result)
     {
         Application.Current?.Dispatcher.Invoke(() =>
         {
-            RawText = result.RawText;
-            CleanedText = result.CleanedText;
-            CanSaveRecording = IsSaveRecordingVisible && _speechService.HasRecordingData;
+            RawText = result.RawTranscript;
+            CleanedText = result.ProcessedText;
+            PartialText = string.Empty;
+            CanSaveRecording = IsSaveRecordingVisible && _pipeline.HasRecordingData;
+
+            // Copy to clipboard
+            if (!string.IsNullOrEmpty(result.ProcessedText))
+            {
+                Clipboard.SetText(result.ProcessedText);
+                _logger.LogInformation("[ViewModel] Cleaned text copied to clipboard.");
+            }
         });
+
+        // Log transcription (fire and forget on background)
+        _ = _logService.LogTranscriptionAsync(result);
     }
 
-    private void OnErrorOccurred(object? sender, string error)
+    private void OnPipelineError(object? sender, PipelineError error)
     {
         Application.Current?.Dispatcher.Invoke(() =>
         {
-            LastError = error;
+            LastError = error.Message;
             HasError = true;
-            // Still allow eval if audio was captured before the error
-            CanSaveRecording = IsSaveRecordingVisible && _speechService.HasRecordingData;
+            CanSaveRecording = IsSaveRecordingVisible && _pipeline.HasRecordingData;
+        });
+    }
+
+    private void OnPartialTranscript(object? sender, string partialText)
+    {
+        Application.Current?.Dispatcher.Invoke(() =>
+        {
+            PartialText = partialText;
         });
     }
 
@@ -123,8 +148,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
             {
                 CanSaveRecording = false;
+                PartialText = string.Empty;
                 _cts = new CancellationTokenSource();
-                _pipeline.StartRecording();
+                _ = _pipeline.StartSessionAsync(_cts.Token);
             }
         });
     }
@@ -135,14 +161,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (Status == AppStatus.Listening)
             {
-                await _pipeline.StopRecordingAndProcessAsync(_cts?.Token ?? CancellationToken.None);
+                await _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
             }
         });
     }
 
     private void OnPasteHotkeyPressed(object? sender, EventArgs e)
     {
-        if (!string.IsNullOrEmpty(_pipeline.LastCleanedText))
+        if (!string.IsNullOrEmpty(_pipeline.LastProcessedText))
         {
             _pasteService.PasteToActiveWindow();
         }
@@ -153,13 +179,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (IsRecording)
         {
-            _ = _pipeline.StopRecordingAndProcessAsync(_cts?.Token ?? CancellationToken.None);
+            _ = _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
         }
         else
         {
             CanSaveRecording = false;
+            PartialText = string.Empty;
             _cts = new CancellationTokenSource();
-            _pipeline.StartRecording();
+            _ = _pipeline.StartSessionAsync(_cts.Token);
         }
     }
 
@@ -177,7 +204,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var wavData = _speechService.GetRecordingAsWav();
+            var wavData = _pipeline.GetRecordingAsWav();
             if (wavData == null || wavData.Length == 0)
             {
                 _logger.LogWarning("[ViewModel] No recording data for eval");
@@ -191,14 +218,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            // Create the eval dialog viewmodel
             var evalLogger = _loggerFactory.CreateLogger<EvalDialogViewModel>();
             var evalVm = new EvalDialogViewModel(evalLogger, wavData, RawText, savePath);
 
-            // Create the dialog view and bind it
             var evalDialog = new EvalDialog { DataContext = evalVm };
 
-            // Show via MaterialDesign DialogHost
             try
             {
                 await DialogHost.Show(evalDialog, "RootDialog");
@@ -217,22 +241,37 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task ProcessFile(string? filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return;
-        _cts = new CancellationTokenSource();
-        await _pipeline.ProcessFileAsync(filePath, _cts.Token);
-    }
-
-    [RelayCommand]
     private void DismissError()
     {
         HasError = false;
         LastError = string.Empty;
     }
 
+    /// <summary>Map Core PipelineState to WPF AppStatus for UI compatibility.</summary>
+    private static AppStatus MapToAppStatus(PipelineState state) => state switch
+    {
+        PipelineState.Idle => AppStatus.Idle,
+        PipelineState.Listening => AppStatus.Listening,
+        PipelineState.Transcribing => AppStatus.Transcribing,
+        PipelineState.PostProcessing => AppStatus.Cleaning,
+        PipelineState.Completed => AppStatus.Ready,
+        PipelineState.Error => AppStatus.Error,
+        _ => AppStatus.Idle
+    };
+
     public void Dispose()
     {
+        // Unsubscribe pipeline events
+        _pipeline.StateChanged -= OnPipelineStateChanged;
+        _pipeline.SessionCompleted -= OnSessionCompleted;
+        _pipeline.ErrorOccurred -= OnPipelineError;
+        _pipeline.PartialTranscriptUpdated -= OnPartialTranscript;
+
+        // Unsubscribe hotkey events
+        _hotkeyService.PushToTalkPressed -= OnPushToTalkPressed;
+        _hotkeyService.PushToTalkReleased -= OnPushToTalkReleased;
+        _hotkeyService.PasteHotkeyPressed -= OnPasteHotkeyPressed;
+
         _hotkeyService.Dispose();
         _cts?.Dispose();
         GC.SuppressFinalize(this);
