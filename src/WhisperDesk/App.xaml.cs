@@ -12,6 +12,7 @@ using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Providers.Llm.AzureOpenAI;
 using WhisperDesk.Core.Providers.Stt.Azure;
+using WhisperDesk.Core.Providers.Stt.Volcengine;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.ViewModels;
@@ -138,8 +139,23 @@ public partial class App : Application
             ChatDeployment = settings.AzureOpenAI.ChatDeployment
         };
 
+        // Volcengine config (optional -- only needed when SttProvider is "Volcengine")
+        VolcengineSttConfig? volcengineSttConfig = null;
+        var volcSettings = settings.VolcengineSpeech;
+        if (!string.IsNullOrWhiteSpace(volcSettings.ApiKey) ||
+            !string.IsNullOrWhiteSpace(volcSettings.AppKey))
+        {
+            volcengineSttConfig = new VolcengineSttConfig
+            {
+                ApiKey = volcSettings.ApiKey,
+                AppKey = volcSettings.AppKey,
+                AccessKey = volcSettings.AccessKey,
+                ResourceId = volcSettings.ResourceId
+            };
+        }
+
         // Register Core pipeline services
-        services.AddWhisperDeskPipeline(pipelineConfig, azureSttConfig, azureOpenAIConfig);
+        services.AddWhisperDeskPipeline(pipelineConfig, azureSttConfig, azureOpenAIConfig, volcengineSttConfig);
 
         // WPF-only services
         services.AddSingleton<HotkeyService>();

@@ -4,6 +4,7 @@ public class WhisperDeskSettings
 {
     public AzureOpenAISettings AzureOpenAI { get; set; } = new();
     public AzureSpeechSettings AzureSpeech { get; set; } = new();
+    public VolcengineSpeechSettings VolcengineSpeech { get; set; } = new();
     public HotkeySettings Hotkeys { get; set; } = new();
     public AudioSettings Audio { get; set; } = new();
     public TranscriptionSettings Transcription { get; set; } = new();
@@ -61,4 +62,19 @@ public class RecordingSettings
     /// Directory path where recordings are saved. If empty, the save recording feature is disabled.
     /// </summary>
     public string SavePath { get; set; } = string.Empty;
+}
+
+public class VolcengineSpeechSettings
+{
+    /// <summary>API Key for Volcengine Doubao ASR. Preferred auth method.</summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>Application ID (legacy auth, used when ApiKey is empty).</summary>
+    public string AppKey { get; set; } = string.Empty;
+
+    /// <summary>Access token (legacy auth, used when ApiKey is empty).</summary>
+    public string AccessKey { get; set; } = string.Empty;
+
+    /// <summary>Service resource identifier (e.g., "volc.seedasr.sauc.duration").</summary>
+    public string ResourceId { get; set; } = "volc.seedasr.sauc.duration";
 }

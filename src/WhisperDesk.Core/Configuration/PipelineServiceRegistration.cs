@@ -4,6 +4,7 @@ using WhisperDesk.Core.Providers.Llm;
 using WhisperDesk.Core.Providers.Llm.AzureOpenAI;
 using WhisperDesk.Core.Providers.Stt;
 using WhisperDesk.Core.Providers.Stt.Azure;
+using WhisperDesk.Core.Providers.Stt.Volcengine;
 using WhisperDesk.Core.Services;
 using WhisperDesk.Core.Stages.PostProcessing;
 using WhisperDesk.Core.Stages.PreProcessing;
@@ -20,12 +21,17 @@ public static class PipelineServiceRegistration
         this IServiceCollection services,
         PipelineConfig pipelineConfig,
         AzureSttConfig azureSttConfig,
-        AzureOpenAILlmConfig azureOpenAIConfig)
+        AzureOpenAILlmConfig azureOpenAIConfig,
+        VolcengineSttConfig? volcengineSttConfig = null)
     {
         // Configuration
         services.AddSingleton(pipelineConfig);
         services.AddSingleton(azureSttConfig);
         services.AddSingleton(azureOpenAIConfig);
+        if (volcengineSttConfig != null)
+        {
+            services.AddSingleton(volcengineSttConfig);
+        }
 
         // Audio routing
         services.AddSingleton<AudioRouter>();
@@ -36,9 +42,15 @@ public static class PipelineServiceRegistration
             case "azurespeech":
                 services.AddSingleton<IStreamingSttProvider, AzureSttProvider>();
                 break;
+            case "volcengine":
+                if (volcengineSttConfig == null)
+                    throw new InvalidOperationException(
+                        "Volcengine STT provider selected but VolcengineSpeech configuration is missing from appsettings.json.");
+                services.AddSingleton<IStreamingSttProvider, VolcengineSttProvider>();
+                break;
             default:
                 throw new InvalidOperationException(
-                    $"Unknown STT provider: '{pipelineConfig.SttProvider}'. Supported: AzureSpeech");
+                    $"Unknown STT provider: '{pipelineConfig.SttProvider}'. Supported: AzureSpeech, Volcengine");
         }
 
         // LLM provider (keyed by config)
