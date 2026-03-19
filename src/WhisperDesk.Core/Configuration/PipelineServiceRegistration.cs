@@ -20,18 +20,17 @@ public static class PipelineServiceRegistration
     public static IServiceCollection AddWhisperDeskPipeline(
         this IServiceCollection services,
         PipelineConfig pipelineConfig,
-        AzureSttConfig azureSttConfig,
-        AzureOpenAILlmConfig azureOpenAIConfig,
+        AzureSttConfig? azureSttConfig = null,
+        AzureOpenAILlmConfig? azureOpenAIConfig = null,
         VolcengineSttConfig? volcengineSttConfig = null)
     {
         // Configuration
         services.AddSingleton(pipelineConfig);
-        services.AddSingleton(azureSttConfig);
-        services.AddSingleton(azureOpenAIConfig);
-        if (volcengineSttConfig != null)
-        {
-            services.AddSingleton(volcengineSttConfig);
-        }
+
+        // Register provider configs only when provided
+        if (azureSttConfig != null) services.AddSingleton(azureSttConfig);
+        if (azureOpenAIConfig != null) services.AddSingleton(azureOpenAIConfig);
+        if (volcengineSttConfig != null) services.AddSingleton(volcengineSttConfig);
 
         // Audio routing
         services.AddSingleton<AudioRouter>();
@@ -40,6 +39,9 @@ public static class PipelineServiceRegistration
         switch (pipelineConfig.SttProvider.ToLowerInvariant())
         {
             case "azurespeech":
+                if (azureSttConfig == null)
+                    throw new InvalidOperationException(
+                        "AzureSpeech STT provider selected but AzureSpeech configuration is missing from appsettings.json.");
                 services.AddSingleton<IStreamingSttProvider, AzureSttProvider>();
                 break;
             case "volcengine":
@@ -57,6 +59,9 @@ public static class PipelineServiceRegistration
         switch (pipelineConfig.LlmProvider.ToLowerInvariant())
         {
             case "azureopenai":
+                if (azureOpenAIConfig == null)
+                    throw new InvalidOperationException(
+                        "AzureOpenAI LLM provider selected but AzureOpenAI configuration is missing from appsettings.json.");
                 services.AddSingleton<ILlmProvider, AzureOpenAILlmProvider>();
                 break;
             default:

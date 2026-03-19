@@ -125,29 +125,36 @@ public partial class App : Application
             }
         };
 
-        var azureSttConfig = new AzureSttConfig
+        // Provider configs (optional -- only needed when their provider is selected)
+        AzureSttConfig? azureSttConfig = null;
+        if (!string.IsNullOrWhiteSpace(settings.AzureSpeech.SubscriptionKey))
         {
-            SubscriptionKey = settings.AzureSpeech.SubscriptionKey,
-            Region = settings.AzureSpeech.Region,
-            Endpoint = settings.AzureSpeech.Endpoint
-        };
+            azureSttConfig = new AzureSttConfig
+            {
+                SubscriptionKey = settings.AzureSpeech.SubscriptionKey,
+                Region = settings.AzureSpeech.Region,
+                Endpoint = settings.AzureSpeech.Endpoint
+            };
+        }
 
-        var azureOpenAIConfig = new AzureOpenAILlmConfig
+        AzureOpenAILlmConfig? azureOpenAIConfig = null;
+        if (!string.IsNullOrWhiteSpace(settings.AzureOpenAI.Endpoint))
         {
-            Endpoint = settings.AzureOpenAI.Endpoint,
-            ApiKey = settings.AzureOpenAI.ApiKey,
-            ChatDeployment = settings.AzureOpenAI.ChatDeployment
-        };
+            azureOpenAIConfig = new AzureOpenAILlmConfig
+            {
+                Endpoint = settings.AzureOpenAI.Endpoint,
+                ApiKey = settings.AzureOpenAI.ApiKey,
+                ChatDeployment = settings.AzureOpenAI.ChatDeployment
+            };
+        }
 
-        // Volcengine config (optional -- only needed when SttProvider is "Volcengine")
         VolcengineSttConfig? volcengineSttConfig = null;
-        var volcSettings = settings.VolcengineSpeech;
-        if (!string.IsNullOrWhiteSpace(volcSettings.ApiKey))
+        if (!string.IsNullOrWhiteSpace(settings.VolcengineSpeech.ApiKey))
         {
             volcengineSttConfig = new VolcengineSttConfig
             {
-                ApiKey = volcSettings.ApiKey,
-                ResourceId = volcSettings.ResourceId
+                ApiKey = settings.VolcengineSpeech.ApiKey,
+                ResourceId = settings.VolcengineSpeech.ResourceId
             };
         }
 
