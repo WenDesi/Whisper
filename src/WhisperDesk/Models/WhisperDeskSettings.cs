@@ -66,14 +66,8 @@ public class RecordingSettings
 
 public class VolcengineSpeechSettings
 {
-    /// <summary>API Key for Volcengine Doubao ASR. Preferred auth method.</summary>
+    /// <summary>API Key for Volcengine Doubao ASR.</summary>
     public string ApiKey { get; set; } = string.Empty;
-
-    /// <summary>Application ID (legacy auth, used when ApiKey is empty).</summary>
-    public string AppKey { get; set; } = string.Empty;
-
-    /// <summary>Access token (legacy auth, used when ApiKey is empty).</summary>
-    public string AccessKey { get; set; } = string.Empty;
 
     /// <summary>Service resource identifier (e.g., "volc.seedasr.sauc.duration").</summary>
     public string ResourceId { get; set; } = "volc.seedasr.sauc.duration";

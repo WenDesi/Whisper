@@ -76,17 +76,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
         _webSocket = new ClientWebSocket();
         var connectId = Guid.NewGuid().ToString(); // dashed UUID
 
-        if (_config.UseApiKeyAuth)
-        {
-            // API Key auth (single header)
-            _webSocket.Options.SetRequestHeader("x-api-key", _config.ApiKey);
-        }
-        else
-        {
-            // Token auth (legacy: App ID + Access Token)
-            _webSocket.Options.SetRequestHeader("X-Api-App-Key", _config.AppKey);
-            _webSocket.Options.SetRequestHeader("X-Api-Access-Key", _config.AccessKey);
-        }
+        _webSocket.Options.SetRequestHeader("x-api-key", _config.ApiKey);
         _webSocket.Options.SetRequestHeader("X-Api-Resource-Id", _config.ResourceId);
         _webSocket.Options.SetRequestHeader("X-Api-Connect-Id", connectId);
 

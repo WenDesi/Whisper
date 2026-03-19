@@ -142,14 +142,11 @@ public partial class App : Application
         // Volcengine config (optional -- only needed when SttProvider is "Volcengine")
         VolcengineSttConfig? volcengineSttConfig = null;
         var volcSettings = settings.VolcengineSpeech;
-        if (!string.IsNullOrWhiteSpace(volcSettings.ApiKey) ||
-            !string.IsNullOrWhiteSpace(volcSettings.AppKey))
+        if (!string.IsNullOrWhiteSpace(volcSettings.ApiKey))
         {
             volcengineSttConfig = new VolcengineSttConfig
             {
                 ApiKey = volcSettings.ApiKey,
-                AppKey = volcSettings.AppKey,
-                AccessKey = volcSettings.AccessKey,
                 ResourceId = volcSettings.ResourceId
             };
         }
