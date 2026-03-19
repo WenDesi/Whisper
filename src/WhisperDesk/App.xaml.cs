@@ -10,8 +10,6 @@ using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
-using WhisperDesk.Core.Providers.Llm.AzureOpenAI;
-using WhisperDesk.Core.Providers.Stt.Azure;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.ViewModels;
@@ -124,22 +122,8 @@ public partial class App : Application
             }
         };
 
-        var azureSttConfig = new AzureSttConfig
-        {
-            SubscriptionKey = settings.AzureSpeech.SubscriptionKey,
-            Region = settings.AzureSpeech.Region,
-            Endpoint = settings.AzureSpeech.Endpoint
-        };
-
-        var azureOpenAIConfig = new AzureOpenAILlmConfig
-        {
-            Endpoint = settings.AzureOpenAI.Endpoint,
-            ApiKey = settings.AzureOpenAI.ApiKey,
-            ChatDeployment = settings.AzureOpenAI.ChatDeployment
-        };
-
-        // Register Core pipeline services
-        services.AddWhisperDeskPipeline(pipelineConfig, azureSttConfig, azureOpenAIConfig);
+        // Register Core pipeline services (provider configs are bound from IConfiguration internally)
+        services.AddWhisperDeskPipeline(pipelineConfig, config);
 
         // WPF-only services
         services.AddSingleton<HotkeyService>();

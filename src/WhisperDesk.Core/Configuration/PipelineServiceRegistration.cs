@@ -1,9 +1,11 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Providers.Llm;
 using WhisperDesk.Core.Providers.Llm.AzureOpenAI;
 using WhisperDesk.Core.Providers.Stt;
 using WhisperDesk.Core.Providers.Stt.Azure;
+using WhisperDesk.Core.Providers.Stt.Volcengine;
 using WhisperDesk.Core.Services;
 using WhisperDesk.Core.Stages.PostProcessing;
 using WhisperDesk.Core.Stages.PreProcessing;
@@ -12,45 +14,25 @@ namespace WhisperDesk.Core.Configuration;
 
 /// <summary>
 /// DI registration for WhisperDesk pipeline services.
-/// Call services.AddWhisperDeskPipeline(config) from the host application.
+/// Call services.AddWhisperDeskPipeline(config, configuration) from the host application.
 /// </summary>
 public static class PipelineServiceRegistration
 {
     public static IServiceCollection AddWhisperDeskPipeline(
         this IServiceCollection services,
         PipelineConfig pipelineConfig,
-        AzureSttConfig azureSttConfig,
-        AzureOpenAILlmConfig azureOpenAIConfig)
+        IConfiguration configuration)
     {
-        // Configuration
         services.AddSingleton(pipelineConfig);
-        services.AddSingleton(azureSttConfig);
-        services.AddSingleton(azureOpenAIConfig);
 
         // Audio routing
         services.AddSingleton<AudioRouter>();
 
-        // STT provider (keyed by config)
-        switch (pipelineConfig.SttProvider.ToLowerInvariant())
-        {
-            case "azurespeech":
-                services.AddSingleton<IStreamingSttProvider, AzureSttProvider>();
-                break;
-            default:
-                throw new InvalidOperationException(
-                    $"Unknown STT provider: '{pipelineConfig.SttProvider}'. Supported: AzureSpeech");
-        }
+        // STT provider
+        services.AddSttProvider(pipelineConfig.SttProvider, configuration);
 
-        // LLM provider (keyed by config)
-        switch (pipelineConfig.LlmProvider.ToLowerInvariant())
-        {
-            case "azureopenai":
-                services.AddSingleton<ILlmProvider, AzureOpenAILlmProvider>();
-                break;
-            default:
-                throw new InvalidOperationException(
-                    $"Unknown LLM provider: '{pipelineConfig.LlmProvider}'. Supported: AzureOpenAI");
-        }
+        // LLM provider
+        services.AddLlmProvider(pipelineConfig.LlmProvider, configuration);
 
         // Context providers
         services.AddSingleton<IContextProvider, HotWordContextProvider>();
@@ -68,5 +50,49 @@ public static class PipelineServiceRegistration
         services.AddSingleton<IPipelineController, StreamingPipeline>();
 
         return services;
+    }
+
+    private static void AddSttProvider(this IServiceCollection services, string provider, IConfiguration configuration)
+    {
+        switch (provider.ToLowerInvariant())
+        {
+            case "azurespeech":
+                services.BindAndRegister<AzureSttConfig>(configuration, "AzureSpeech");
+                services.AddSingleton<IStreamingSttProvider, AzureSttProvider>();
+                break;
+            case "volcengine":
+                services.BindAndRegister<VolcengineSttConfig>(configuration, "VolcengineSpeech");
+                services.AddSingleton<IStreamingSttProvider, VolcengineSttProvider>();
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown STT provider: '{provider}'. Supported: AzureSpeech, Volcengine");
+        }
+    }
+
+    private static void AddLlmProvider(this IServiceCollection services, string provider, IConfiguration configuration)
+    {
+        switch (provider.ToLowerInvariant())
+        {
+            case "azureopenai":
+                services.BindAndRegister<AzureOpenAILlmConfig>(configuration, "AzureOpenAI");
+                services.AddSingleton<ILlmProvider, AzureOpenAILlmProvider>();
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown LLM provider: '{provider}'. Supported: AzureOpenAI");
+        }
+    }
+
+    /// <summary>
+    /// Binds a configuration section to a new instance and registers it as a singleton.
+    /// </summary>
+    private static T BindAndRegister<T>(this IServiceCollection services, IConfiguration configuration, string sectionName)
+        where T : class, new()
+    {
+        var config = new T();
+        configuration.GetSection(sectionName).Bind(config);
+        services.AddSingleton(config);
+        return config;
     }
 }
