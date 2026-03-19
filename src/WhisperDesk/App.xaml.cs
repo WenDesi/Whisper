@@ -10,9 +10,6 @@ using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
-using WhisperDesk.Core.Providers.Llm.AzureOpenAI;
-using WhisperDesk.Core.Providers.Stt.Azure;
-using WhisperDesk.Core.Providers.Stt.Volcengine;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.ViewModels;
@@ -125,41 +122,8 @@ public partial class App : Application
             }
         };
 
-        // Provider configs (optional -- only needed when their provider is selected)
-        AzureSttConfig? azureSttConfig = null;
-        if (!string.IsNullOrWhiteSpace(settings.AzureSpeech.SubscriptionKey))
-        {
-            azureSttConfig = new AzureSttConfig
-            {
-                SubscriptionKey = settings.AzureSpeech.SubscriptionKey,
-                Region = settings.AzureSpeech.Region,
-                Endpoint = settings.AzureSpeech.Endpoint
-            };
-        }
-
-        AzureOpenAILlmConfig? azureOpenAIConfig = null;
-        if (!string.IsNullOrWhiteSpace(settings.AzureOpenAI.Endpoint))
-        {
-            azureOpenAIConfig = new AzureOpenAILlmConfig
-            {
-                Endpoint = settings.AzureOpenAI.Endpoint,
-                ApiKey = settings.AzureOpenAI.ApiKey,
-                ChatDeployment = settings.AzureOpenAI.ChatDeployment
-            };
-        }
-
-        VolcengineSttConfig? volcengineSttConfig = null;
-        if (!string.IsNullOrWhiteSpace(settings.VolcengineSpeech.ApiKey))
-        {
-            volcengineSttConfig = new VolcengineSttConfig
-            {
-                ApiKey = settings.VolcengineSpeech.ApiKey,
-                ResourceId = settings.VolcengineSpeech.ResourceId
-            };
-        }
-
-        // Register Core pipeline services
-        services.AddWhisperDeskPipeline(pipelineConfig, azureSttConfig, azureOpenAIConfig, volcengineSttConfig);
+        // Register Core pipeline services (provider configs are bound from IConfiguration internally)
+        services.AddWhisperDeskPipeline(pipelineConfig, config);
 
         // WPF-only services
         services.AddSingleton<HotkeyService>();
