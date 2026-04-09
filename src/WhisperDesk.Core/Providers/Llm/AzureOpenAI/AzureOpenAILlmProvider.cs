@@ -1,6 +1,6 @@
 using System.ClientModel;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using MethodTimer;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
@@ -24,16 +24,14 @@ public class AzureOpenAILlmProvider : ILlmProvider
         _config = config;
     }
 
+    [Time]
     public async Task<string> ProcessTextAsync(
         string systemPrompt,
         string userText,
         LlmRequestOptions? options = null,
         CancellationToken ct = default)
     {
-        using var activity = DiagnosticSources.Llm.StartActivity("AzureOpenAI.ProcessText");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-        activity?.SetTag("llm.model", _config.ChatDeployment);
-        activity?.SetTag("llm.input.length", userText.Length);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _logger.LogInformation("[AzureOpenAI] Processing text ({Length} chars) via {Model}.",
             userText.Length, _config.ChatDeployment);
@@ -61,21 +59,17 @@ public class AzureOpenAILlmProvider : ILlmProvider
         _logger.LogInformation("[AzureOpenAI] Response: {InLen} -> {OutLen} chars.",
             userText.Length, result.Length);
 
-        activity?.SetTag("llm.output.length", result.Length);
-
         return result;
     }
 
+    [Time]
     public async IAsyncEnumerable<string> ProcessTextStreamingAsync(
         string systemPrompt,
         string userText,
         LlmRequestOptions? options = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        using var activity = DiagnosticSources.Llm.StartActivity("AzureOpenAI.ProcessTextStreaming");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-        activity?.SetTag("llm.model", _config.ChatDeployment);
-        activity?.SetTag("llm.input.length", userText.Length);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _logger.LogInformation("[AzureOpenAI] Streaming text ({Length} chars) via {Model}.",
             userText.Length, _config.ChatDeployment);
@@ -105,8 +99,6 @@ public class AzureOpenAILlmProvider : ILlmProvider
                 }
             }
         }
-
-        activity?.SetTag("llm.stream.chunks", chunkCount);
     }
 
     private ChatClient CreateClient()

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
@@ -7,6 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using MethodTimer;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
@@ -122,10 +122,10 @@ public partial class OverlayWindow : Window
     /// Call once at startup to make the window permanently visible (but transparent).
     /// Positions at top-center of screen.
     /// </summary>
+    [Time]
     public void Initialize()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("OverlayWindow.Initialize");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         var helper = new WindowInteropHelper(this);
         helper.EnsureHandle();
@@ -141,16 +141,13 @@ public partial class OverlayWindow : Window
         _pasteService = pasteService;
     }
 
+    [Time]
     public void ShowForStatus(AppStatus status, string? errorMessage = null)
     {
-        using var activity = DiagnosticSources.UI.StartActivity("OverlayWindow.ShowForStatus");
-        activity?.SetTag("calling.thread.id", Environment.CurrentManagedThreadId);
-        activity?.SetTag("overlay.status", status.ToString());
+        using var _span = MethodTimeLogger.BeginSpan();
 
         Dispatcher.Invoke(() =>
         {
-            activity?.SetTag("ui.thread.id", Environment.CurrentManagedThreadId);
-
             _autoHideTimer?.Stop();
             StopActiveAnimations();
 
@@ -183,7 +180,7 @@ public partial class OverlayWindow : Window
                 ApplyAdaptiveBorder();
             }
 
-            // Fade in via opacity — window is always "shown", no Show() call
+            // Fade in via opacity -- window is always "shown", no Show() call
             if (RootContainer.Opacity < 0.1)
             {
                 var fadeIn = (Storyboard)FindResource("FadeIn");
@@ -238,10 +235,10 @@ public partial class OverlayWindow : Window
         spinner.Begin(this, true);
     }
 
+    [Time]
     private void ShowDone()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("OverlayWindow.ShowDone");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         StopActiveAnimations();
 
@@ -258,12 +255,8 @@ public partial class OverlayWindow : Window
         {
             await Task.Delay(150);
 
-            using var pasteActivity = DiagnosticSources.UI.StartActivity("OverlayWindow.ShowDone.DispatcherInvoke.Paste");
-            pasteActivity?.SetTag("calling.thread.id", Environment.CurrentManagedThreadId);
-
             Dispatcher.Invoke(() =>
             {
-                pasteActivity?.SetTag("ui.thread.id", Environment.CurrentManagedThreadId);
                 _pasteService?.PasteToActiveWindow();
             });
         });
@@ -290,15 +283,13 @@ public partial class OverlayWindow : Window
         _autoHideTimer.Start();
     }
 
+    [Time]
     public void HideOverlay()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("OverlayWindow.HideOverlay");
-        activity?.SetTag("calling.thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         Dispatcher.Invoke(() =>
         {
-            activity?.SetTag("ui.thread.id", Environment.CurrentManagedThreadId);
-
             if (RootContainer.Opacity < 0.1) return;
 
             var fadeOut = (Storyboard)FindResource("FadeOut");
@@ -417,10 +408,10 @@ public partial class OverlayWindow : Window
         }
     }
 
+    [Time]
     private void PositionOnCurrentScreen()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("OverlayWindow.PositionOnCurrentScreen");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         if (!GetCursorPos(out var cursorPt)) return;
 
@@ -462,10 +453,10 @@ public partial class OverlayWindow : Window
     /// <summary>
     /// Sample the screen behind the overlay position and set the border to the inverse color.
     /// </summary>
+    [Time]
     private void ApplyAdaptiveBorder()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("OverlayWindow.ApplyAdaptiveBorder");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         try
         {
@@ -477,9 +468,6 @@ public partial class OverlayWindow : Window
             int captureY = (int)(Top * dpiScale);
             int captureW = Math.Max((int)(200 * dpiScale), 1);
             int captureH = Math.Max((int)(50 * dpiScale), 1);
-
-            activity?.SetTag("capture.width", captureW);
-            activity?.SetTag("capture.height", captureH);
 
             // Capture screen region
             using var bmp = new Bitmap(captureW, captureH, PixelFormat.Format32bppArgb);

@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using MethodTimer;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.Extensions.Logging;
@@ -39,11 +39,10 @@ public class AzureSttProvider : IStreamingSttProvider
         _config = config;
     }
 
+    [Time]
     public async Task StartSessionAsync(SttSessionOptions options, CancellationToken ct = default)
     {
-        using var activity = DiagnosticSources.Stt.StartActivity("AzureStt.StartSession");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-        activity?.SetTag("stt.provider", "Azure");
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _logger.LogInformation("[AzureStt] Starting session...");
 
@@ -51,49 +50,32 @@ public class AzureSttProvider : IStreamingSttProvider
         _sessionTcs = new TaskCompletionSource<bool>();
 
         // Configure Speech SDK
-        SpeechConfig speechConfig;
-        using (var configStep = DiagnosticSources.Stt.StartActivity("AzureStt.StartSession.CreateSpeechConfig"))
-        {
-            configStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            speechConfig = SpeechConfig.FromSubscription(_config.SubscriptionKey, _config.Region);
-        }
+        var speechConfig = SpeechConfig.FromSubscription(_config.SubscriptionKey, _config.Region);
 
         // Auto-detect languages from session options
         var languages = options.Languages.Count > 0
             ? options.Languages.ToArray()
             : new[] { "zh-CN", "en-US" };
         var autoDetectConfig = AutoDetectSourceLanguageConfig.FromLanguages(languages);
-        activity?.SetTag("stt.languages", string.Join(",", languages));
 
         // Create push stream with matching audio format
-        using (var recognizerStep = DiagnosticSources.Stt.StartActivity("AzureStt.StartSession.CreateRecognizer"))
-        {
-            recognizerStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-
-            var audioFormat = AudioStreamFormat.GetWaveFormatPCM(
-                (uint)options.AudioFormat.SampleRate,
-                (byte)options.AudioFormat.BitsPerSample,
-                (byte)options.AudioFormat.Channels);
-            _pushStream = AudioInputStream.CreatePushStream(audioFormat);
-            _audioConfig = AudioConfig.FromStreamInput(_pushStream);
-            _recognizer = new SpeechRecognizer(speechConfig, autoDetectConfig, _audioConfig);
-        }
+        var audioFormat = AudioStreamFormat.GetWaveFormatPCM(
+            (uint)options.AudioFormat.SampleRate,
+            (byte)options.AudioFormat.BitsPerSample,
+            (byte)options.AudioFormat.Channels);
+        _pushStream = AudioInputStream.CreatePushStream(audioFormat);
+        _audioConfig = AudioConfig.FromStreamInput(_pushStream);
+        _recognizer = new SpeechRecognizer(speechConfig, autoDetectConfig, _audioConfig);
 
         // Apply phrase hints if provider supports them
-        using (var hintsStep = DiagnosticSources.Stt.StartActivity("AzureStt.StartSession.PhraseHints"))
+        if (options.PhraseHints.Count > 0)
         {
-            hintsStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            hintsStep?.SetTag("hints.count", options.PhraseHints.Count);
-
-            if (options.PhraseHints.Count > 0)
+            var phraseList = PhraseListGrammar.FromRecognizer(_recognizer);
+            foreach (var hint in options.PhraseHints)
             {
-                var phraseList = PhraseListGrammar.FromRecognizer(_recognizer);
-                foreach (var hint in options.PhraseHints)
-                {
-                    phraseList.AddPhrase(hint);
-                }
-                _logger.LogInformation("[AzureStt] Added {Count} phrase hints.", options.PhraseHints.Count);
+                phraseList.AddPhrase(hint);
             }
+            _logger.LogInformation("[AzureStt] Added {Count} phrase hints.", options.PhraseHints.Count);
         }
 
         // Wire events
@@ -142,11 +124,7 @@ public class AzureSttProvider : IStreamingSttProvider
 
         _ctRegistration = ct.Register(() => _sessionTcs?.TrySetCanceled());
 
-        using (var startRecogStep = DiagnosticSources.Stt.StartActivity("AzureStt.StartSession.StartContinuousRecognition"))
-        {
-            startRecogStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            await _recognizer.StartContinuousRecognitionAsync();
-        }
+        await _recognizer.StartContinuousRecognitionAsync();
 
         _logger.LogInformation("[AzureStt] Session started. Ready for audio.");
     }
@@ -156,21 +134,19 @@ public class AzureSttProvider : IStreamingSttProvider
         _pushStream?.Write(audioData.ToArray());
     }
 
+    [Time]
     public void SignalEndOfAudio()
     {
-        using var activity = DiagnosticSources.Stt.StartActivity("AzureStt.SignalEndOfAudio");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-        activity?.SetTag("stt.provider", "Azure");
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _pushStream?.Close();
         _logger.LogInformation("[AzureStt] End of audio signaled.");
     }
 
+    [Time]
     public async Task<string> EndSessionAsync()
     {
-        using var activity = DiagnosticSources.Stt.StartActivity("AzureStt.EndSession");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-        activity?.SetTag("stt.provider", "Azure");
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _logger.LogInformation("[AzureStt] Ending session...");
 
@@ -180,20 +156,11 @@ public class AzureSttProvider : IStreamingSttProvider
 
         if (_recognizer != null)
         {
-            using (var stopStep = DiagnosticSources.Stt.StartActivity("AzureStt.EndSession.StopContinuousRecognition"))
-            {
-                stopStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-                await _recognizer.StopContinuousRecognitionAsync();
-            }
+            await _recognizer.StopContinuousRecognitionAsync();
 
-            using (var waitStep = DiagnosticSources.Stt.StartActivity("AzureStt.EndSession.WaitForCompletion"))
+            if (_sessionTcs != null)
             {
-                waitStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-                if (_sessionTcs != null)
-                {
-                    var completedTask = await Task.WhenAny(_sessionTcs.Task, Task.Delay(3000));
-                    waitStep?.SetTag("timed_out", completedTask != _sessionTcs.Task);
-                }
+                var completedTask = await Task.WhenAny(_sessionTcs.Task, Task.Delay(3000));
             }
 
             _recognizer.Dispose();
@@ -208,9 +175,6 @@ public class AzureSttProvider : IStreamingSttProvider
         var fullText = string.Join("", segments);
         _logger.LogInformation("[AzureStt] Session ended. {Length} chars from {Segments} segments.",
             fullText.Length, segments.Length);
-
-        activity?.SetTag("transcript.length", fullText.Length);
-        activity?.SetTag("transcript.segments", segments.Length);
 
         return fullText;
     }

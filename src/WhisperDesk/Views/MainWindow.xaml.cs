@@ -1,8 +1,8 @@
-using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using MethodTimer;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.ViewModels;
 
@@ -12,31 +12,20 @@ public partial class MainWindow : Window
 {
     public MainWindow(MainViewModel viewModel)
     {
-        using var activity = DiagnosticSources.UI.StartActivity("MainWindow.Constructor");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-
-        using (var initStep = DiagnosticSources.UI.StartActivity("MainWindow.Constructor.InitializeComponent"))
-        {
-            initStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            InitializeComponent();
-        }
+        InitializeComponent();
 
         DataContext = viewModel;
 
         // Set window icon explicitly so taskbar shows it even when run via dotnet run
         // Use 256x256 size from the ico file for crisp taskbar display
-        using (var iconStep = DiagnosticSources.UI.StartActivity("MainWindow.Constructor.LoadIcon"))
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        if (File.Exists(iconPath))
         {
-            iconStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
-            if (File.Exists(iconPath))
-            {
-                using var icon = new System.Drawing.Icon(iconPath, 256, 256);
-                Icon = Imaging.CreateBitmapSourceFromHIcon(
-                    icon.Handle,
-                    Int32Rect.Empty,
-                    BitmapSizeOptions.FromEmptyOptions());
-            }
+            using var icon = new System.Drawing.Icon(iconPath, 256, 256);
+            Icon = Imaging.CreateBitmapSourceFromHIcon(
+                icon.Handle,
+                Int32Rect.Empty,
+                BitmapSizeOptions.FromEmptyOptions());
         }
     }
 
@@ -57,20 +46,20 @@ public partial class MainWindow : Window
         Hide();
     }
 
+    [Time]
     public void ShowFromTray()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("MainWindow.ShowFromTray");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         Show();
         WindowState = WindowState.Normal;
         Activate();
     }
 
+    [Time]
     public void ForceClose()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("MainWindow.ForceClose");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         // Called from tray exit
         Closing -= Window_Closing;

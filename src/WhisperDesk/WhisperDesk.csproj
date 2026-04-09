@@ -46,6 +46,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Fody IL weaving for method timing -->
+    <PackageReference Include="Fody" Version="6.9.2" PrivateAssets="all" />
+    <PackageReference Include="MethodTimer.Fody" Version="3.2.2" PrivateAssets="all" />
+
     <!-- Audio recording (needed directly for EvalDialogViewModel playback) -->
     <PackageReference Include="NAudio" Version="2.2.1" />
 

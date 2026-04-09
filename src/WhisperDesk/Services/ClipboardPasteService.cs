@@ -1,6 +1,5 @@
-using System.Diagnostics;
-using System.Windows;
 using System.Windows.Forms;
+using MethodTimer;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Diagnostics;
 
@@ -18,36 +17,24 @@ public class ClipboardPasteService
         _logger = logger;
     }
 
+    [Time]
     public void PasteToActiveWindow()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("ClipboardPaste.PasteToActiveWindow");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         try
         {
             // Small delay to let the hotkey keys release
-            using (var delayStep = DiagnosticSources.UI.StartActivity("ClipboardPaste.PasteToActiveWindow.BlockingDelay"))
-            {
-                delayStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-                delayStep?.SetTag("delay.ms", 100);
-                Task.Delay(100).Wait();
-            }
+            Task.Delay(100).Wait();
 
             // Use SendKeys to simulate Ctrl+V
-            using (var sendKeysStep = DiagnosticSources.UI.StartActivity("ClipboardPaste.PasteToActiveWindow.SendKeys"))
-            {
-                sendKeysStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-                SendKeys.SendWait("^v");
-            }
+            SendKeys.SendWait("^v");
 
             _logger.LogDebug("Paste simulated to active window");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to paste to active window");
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.AddTag("exception.type", ex.GetType().FullName);
-            activity?.AddTag("exception.message", ex.Message);
         }
     }
 }

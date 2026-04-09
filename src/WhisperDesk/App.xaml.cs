@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Hardcodet.Wpf.TaskbarNotification;
+using MethodTimer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,59 +25,35 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
-    private ActivityListener? _activityListener;
 
+    [Time]
     protected override void OnStartup(StartupEventArgs e)
     {
-        using var startupActivity = DiagnosticSources.UI.StartActivity("App.OnStartup");
-        startupActivity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         base.OnStartup(e);
 
-        ServiceCollection services;
-        using (var configStep = DiagnosticSources.UI.StartActivity("App.OnStartup.ConfigureServices"))
-        {
-            configStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            services = new ServiceCollection();
-            ConfigureServices(services);
-            _serviceProvider = services.BuildServiceProvider();
-        }
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        _serviceProvider = services.BuildServiceProvider();
 
-        using (var trayStep = DiagnosticSources.UI.StartActivity("App.OnStartup.SetupTrayIcon"))
-        {
-            trayStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            SetupTrayIcon();
-        }
+        SetupTrayIcon();
 
-        using (var windowStep = DiagnosticSources.UI.StartActivity("App.OnStartup.CreateMainWindow"))
-        {
-            windowStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
-            _mainWindow.Show();
-        }
+        _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+        _mainWindow.Show();
 
-        // Create overlay window — always visible but transparent until needed
+        // Create overlay window -- always visible but transparent until needed
         // No Show/Hide toggling = no focus stealing
-        using (var overlayStep = DiagnosticSources.UI.StartActivity("App.OnStartup.InitOverlayWindow"))
-        {
-            overlayStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            _overlayWindow = new OverlayWindow();
-            _overlayWindow.Initialize();
-            _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
-        }
+        _overlayWindow = new OverlayWindow();
+        _overlayWindow.Initialize();
+        _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
 
         // Wire tray tooltip + overlay updates via IPipelineController
         var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
         pipeline.StateChanged += (_, pipelineState) =>
         {
-            using var stateActivity = DiagnosticSources.UI.StartActivity("App.OnStateChanged.DispatcherInvoke");
-            stateActivity?.SetTag("calling.thread.id", Environment.CurrentManagedThreadId);
-            stateActivity?.SetTag("pipeline.state", pipelineState.ToString());
-
             Dispatcher.Invoke(() =>
             {
-                stateActivity?.SetTag("ui.thread.id", Environment.CurrentManagedThreadId);
-
                 var appStatus = MapToAppStatus(pipelineState);
                 if (_trayIcon != null)
                 {
@@ -96,20 +73,18 @@ public partial class App : Application
 
         pipeline.ErrorOccurred += (_, error) =>
         {
-            using var errorActivity = DiagnosticSources.UI.StartActivity("App.OnErrorOccurred.DispatcherInvoke");
-            errorActivity?.SetTag("calling.thread.id", Environment.CurrentManagedThreadId);
-            errorActivity?.SetTag("error.message", error.Message);
-
             Dispatcher.Invoke(() =>
             {
-                errorActivity?.SetTag("ui.thread.id", Environment.CurrentManagedThreadId);
                 _overlayWindow?.ShowForStatus(AppStatus.Error, error.Message);
             });
         };
     }
 
+    [Time]
     private void ConfigureServices(IServiceCollection services)
     {
+        using var _span = MethodTimeLogger.BeginSpan();
+
         // Configuration
         // For single-file publish, AppContext.BaseDirectory points to the temp extraction dir.
         // Use the exe's actual location so appsettings.json sits next to the exe.
@@ -140,25 +115,10 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        // Activity tracing — write completed spans to the same log file via ILogger
-        // This replaces OpenTelemetry ConsoleExporter which doesn't work with WinExe (no console)
-        var traceLogger = services.BuildServiceProvider().GetRequiredService<ILogger<App>>();
-        _activityListener = new ActivityListener
-        {
-            ShouldListenTo = source => source.Name.StartsWith("WhisperDesk"),
-            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStopped = activity =>
-            {
-                var tags = string.Join(", ", activity.TagObjects.Select(t => $"{t.Key}={t.Value}"));
-                traceLogger.LogInformation(
-                    "[TRACE] {DisplayName} duration={Duration}ms status={Status} tags=[{Tags}]",
-                    activity.DisplayName,
-                    activity.Duration.TotalMilliseconds.ToString("F1"),
-                    activity.Status,
-                    tags);
-            }
-        };
-        ActivitySource.AddActivityListener(_activityListener);
+        // Initialize trace logger for MethodTimer.Fody
+        var traceLoggerFactory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
+        MethodTimeLogger.Initialize(
+            traceLoggerFactory.CreateLogger("Trace"));
 
         // Map old settings to Core config objects
         var pipelineConfig = new PipelineConfig
@@ -200,8 +160,11 @@ public partial class App : Application
         _ => AppStatus.Idle
     };
 
+    [Time]
     private void SetupTrayIcon()
     {
+        using var _span = MethodTimeLogger.BeginSpan();
+
         _trayIcon = new TaskbarIcon
         {
             ToolTipText = "WhisperDesk - Ready",
@@ -209,14 +172,10 @@ public partial class App : Application
         };
 
         // Use custom app icon for tray (loaded from embedded resource)
-        using (var iconLoadStep = DiagnosticSources.UI.StartActivity("App.SetupTrayIcon.LoadIcon"))
-        {
-            iconLoadStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            var iconStream = GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"))?.Stream;
-            _trayIcon.Icon = iconStream != null
-                ? new System.Drawing.Icon(iconStream)
-                : SystemIcons.Application;
-        }
+        var iconStream = GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"))?.Stream;
+        _trayIcon.Icon = iconStream != null
+            ? new System.Drawing.Icon(iconStream)
+            : SystemIcons.Application;
 
         // Context menu
         var contextMenu = new System.Windows.Controls.ContextMenu();
@@ -235,16 +194,14 @@ public partial class App : Application
         _trayIcon.TrayMouseDoubleClick += (_, _) => _mainWindow?.ShowFromTray();
     }
 
+    [Time]
     private void ExitApplication()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("App.ExitApplication");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _trayIcon?.Dispose();
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();
-
-        _activityListener?.Dispose();
 
         if (_serviceProvider is IDisposable disposable)
         {

@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.IO;
 using H.Hooks;
+using MethodTimer;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Models;
 using Microsoft.Extensions.Logging;
@@ -27,12 +27,10 @@ public class HotkeyService : IDisposable
         _settings = settings;
     }
 
+    [Time]
     public void Start()
     {
-        using var activity = DiagnosticSources.UI.StartActivity("HotkeyService.Start");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-        activity?.SetTag("hotkey.push_to_talk", _settings.PushToTalk);
-        activity?.SetTag("hotkey.paste", _settings.PasteTranscription);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _keyboardHook = new LowLevelKeyboardHook
         {
@@ -46,10 +44,10 @@ public class HotkeyService : IDisposable
             _settings.PushToTalk, _settings.PasteTranscription);
     }
 
+    [Time]
     private void OnKeyDown(object? sender, KeyboardEventArgs e)
     {
-        using var activity = DiagnosticSources.UI.StartActivity("HotkeyService.OnKeyDown");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         foreach (var key in e.Keys.Values)
         {
@@ -61,7 +59,6 @@ public class HotkeyService : IDisposable
         {
             _pushToTalkActive = true;
             _logger.LogDebug("Push-to-talk activated");
-            activity?.SetTag("action", "push_to_talk_pressed");
             PushToTalkPressed?.Invoke(this, EventArgs.Empty);
         }
 
@@ -69,15 +66,14 @@ public class HotkeyService : IDisposable
         if (IsHotkeyPressed(_settings.PasteTranscription))
         {
             _logger.LogDebug("Paste hotkey activated");
-            activity?.SetTag("action", "paste_pressed");
             PasteHotkeyPressed?.Invoke(this, EventArgs.Empty);
         }
     }
 
+    [Time]
     private void OnKeyUp(object? sender, KeyboardEventArgs e)
     {
-        using var activity = DiagnosticSources.UI.StartActivity("HotkeyService.OnKeyUp");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         foreach (var key in e.Keys.Values)
         {
@@ -89,7 +85,6 @@ public class HotkeyService : IDisposable
         {
             _pushToTalkActive = false;
             _logger.LogDebug("Push-to-talk released");
-            activity?.SetTag("action", "push_to_talk_released");
             PushToTalkReleased?.Invoke(this, EventArgs.Empty);
         }
     }

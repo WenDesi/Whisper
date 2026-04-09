@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using MethodTimer;
 using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 using WhisperDesk.Core.Diagnostics;
@@ -43,13 +43,10 @@ public class AudioRouter : IDisposable
     /// <summary>
     /// Start microphone capture. Audio is buffered until SetSink is called.
     /// </summary>
+    [Time]
     public void Start(AudioFormat format)
     {
-        using var activity = DiagnosticSources.Audio.StartActivity("AudioRouter.Start");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-        activity?.SetTag("audio.sample_rate", format.SampleRate);
-        activity?.SetTag("audio.bits_per_sample", format.BitsPerSample);
-        activity?.SetTag("audio.channels", format.Channels);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _sinkReady = false;
         _currentFormat = format;
@@ -78,10 +75,10 @@ public class AudioRouter : IDisposable
     /// Set the audio sink (typically the STT provider's PushAudio method).
     /// Flushes any pre-buffered audio immediately.
     /// </summary>
+    [Time]
     public void SetSink(Action<ReadOnlyMemory<byte>> sink)
     {
-        using var activity = DiagnosticSources.Audio.StartActivity("AudioRouter.SetSink");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         _audioSink = sink;
         _sinkReady = true;
@@ -89,10 +86,10 @@ public class AudioRouter : IDisposable
     }
 
     /// <summary>Stop microphone capture.</summary>
+    [Time]
     public void Stop()
     {
-        using var activity = DiagnosticSources.Audio.StartActivity("AudioRouter.Stop");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         if (_waveIn != null)
         {
@@ -105,7 +102,6 @@ public class AudioRouter : IDisposable
         _sinkReady = false;
         _audioSink = null;
 
-        activity?.SetTag("total.chunks", _chunkCount);
         _logger.LogInformation("[AudioRouter] Mic capture stopped.");
     }
 
@@ -122,10 +118,10 @@ public class AudioRouter : IDisposable
     }
 
     /// <summary>Get captured audio as a WAV byte array. Returns null if no data.</summary>
+    [Time]
     public byte[]? GetRecordingAsWav()
     {
-        using var activity = DiagnosticSources.Audio.StartActivity("AudioRouter.GetRecordingAsWav");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         byte[] pcmData;
         lock (_recordingLock)
@@ -133,14 +129,12 @@ public class AudioRouter : IDisposable
             if (_recordingBuffer == null || _recordingBuffer.Length == 0)
             {
                 _logger.LogWarning("[AudioRouter] No recording data available.");
-                activity?.SetTag("result", "no_data");
                 return null;
             }
             pcmData = _recordingBuffer.ToArray();
         }
 
         _logger.LogInformation("[AudioRouter] Building WAV from {Bytes} bytes of PCM.", pcmData.Length);
-        activity?.SetTag("pcm.bytes", pcmData.Length);
 
         using var wavStream = new MemoryStream();
         using (var writer = new BinaryWriter(wavStream, System.Text.Encoding.UTF8, leaveOpen: true))
@@ -172,9 +166,7 @@ public class AudioRouter : IDisposable
             writer.Write(pcmData);
         }
 
-        var wavBytes = wavStream.ToArray();
-        activity?.SetTag("wav.bytes", wavBytes.Length);
-        return wavBytes;
+        return wavStream.ToArray();
     }
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
@@ -183,53 +175,36 @@ public class AudioRouter : IDisposable
 
         _chunkCount++;
 
-        // Only trace every 100th chunk to avoid overwhelming the trace output
-        Activity? activity = null;
-        if (_chunkCount % 100 == 0)
+        var chunk = new byte[e.BytesRecorded];
+        Buffer.BlockCopy(e.Buffer, 0, chunk, 0, e.BytesRecorded);
+
+        // Always tee to recording buffer
+        lock (_recordingLock)
         {
-            activity = DiagnosticSources.Audio.StartActivity("AudioRouter.OnDataAvailable");
-            activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
-            activity?.SetTag("chunk.number", _chunkCount);
-            activity?.SetTag("chunk.bytes", e.BytesRecorded);
+            _recordingBuffer?.Write(chunk, 0, chunk.Length);
         }
 
-        try
+        // Run through interceptors
+        ReadOnlyMemory<byte> audio = chunk;
+        foreach (var interceptor in _interceptors)
         {
-            var chunk = new byte[e.BytesRecorded];
-            Buffer.BlockCopy(e.Buffer, 0, chunk, 0, e.BytesRecorded);
-
-            // Always tee to recording buffer
-            lock (_recordingLock)
-            {
-                _recordingBuffer?.Write(chunk, 0, chunk.Length);
-            }
-
-            // Run through interceptors
-            ReadOnlyMemory<byte> audio = chunk;
-            foreach (var interceptor in _interceptors)
-            {
-                audio = interceptor.Process(audio);
-            }
-
-            if (_sinkReady)
-            {
-                _audioSink?.Invoke(audio);
-            }
-            else
-            {
-                _preBuffer.Enqueue(audio.ToArray());
-            }
+            audio = interceptor.Process(audio);
         }
-        finally
+
+        if (_sinkReady)
         {
-            activity?.Dispose();
+            _audioSink?.Invoke(audio);
+        }
+        else
+        {
+            _preBuffer.Enqueue(audio.ToArray());
         }
     }
 
+    [Time]
     private void FlushPreBuffer()
     {
-        using var activity = DiagnosticSources.Audio.StartActivity("AudioRouter.FlushPreBuffer");
-        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        using var _span = MethodTimeLogger.BeginSpan();
 
         int flushed = 0;
         while (_preBuffer.TryDequeue(out var chunk))
@@ -238,7 +213,6 @@ public class AudioRouter : IDisposable
             flushed++;
         }
 
-        activity?.SetTag("flushed.chunks", flushed);
         if (flushed > 0)
         {
             _logger.LogInformation("[AudioRouter] Flushed {Count} pre-buffered chunks to sink.", flushed);
