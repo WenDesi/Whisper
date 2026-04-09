@@ -23,6 +23,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly RecordingSettings _recordingSettings;
     private readonly ILoggerFactory _loggerFactory;
     private CancellationTokenSource? _cts;
+    private bool _isStopping;
 
     [ObservableProperty]
     private AppStatus _status = AppStatus.Idle;
@@ -92,7 +93,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnPipelineStateChanged(object? sender, PipelineState pipelineState)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             var appStatus = MapToAppStatus(pipelineState);
             Status = appStatus;
@@ -104,18 +105,49 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnSessionCompleted(object? sender, PipelineResult result)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             RawText = result.RawTranscript;
             CleanedText = result.ProcessedText;
             PartialText = string.Empty;
             CanSaveRecording = IsSaveRecordingVisible && _pipeline.HasRecordingData;
 
-            // Copy to clipboard
+            // Write to clipboard with retries, then paste sequentially
             if (!string.IsNullOrEmpty(result.ProcessedText))
             {
-                Clipboard.SetText(result.ProcessedText);
-                _logger.LogInformation("[ViewModel] Cleaned text copied to clipboard.");
+                bool clipboardOk = false;
+                for (int i = 0; i < 5; i++)
+                {
+                    try
+                    {
+                        Clipboard.SetDataObject(result.ProcessedText, true);
+                        clipboardOk = true;
+                        _logger.LogInformation("[ViewModel] Cleaned text copied to clipboard.");
+                        break;
+                    }
+                    catch (System.Runtime.InteropServices.COMException ex)
+                    {
+                        _logger.LogWarning("[ViewModel] Clipboard busy (attempt {Attempt}/5): {Message}", i + 1, ex.Message);
+                        if (i < 4) Thread.Sleep(100);
+                    }
+                }
+
+                if (clipboardOk)
+                {
+                    // Paste AFTER clipboard write succeeds — sequential, no race
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(150); // let clipboard settle + let hotkey keys release
+                        Application.Current?.Dispatcher.InvokeAsync(() =>
+                        {
+                            _pasteService.PasteToActiveWindow();
+                        });
+                    });
+                }
+                else
+                {
+                    _logger.LogWarning("[ViewModel] Clipboard unavailable after retries, skipping auto-paste.");
+                }
             }
         });
 
@@ -125,7 +157,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnPipelineError(object? sender, PipelineError error)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             LastError = error.Message;
             HasError = true;
@@ -135,7 +167,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnPartialTranscript(object? sender, string partialText)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             PartialText = partialText;
         });
@@ -143,25 +175,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnPushToTalkPressed(object? sender, EventArgs e)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
             {
                 CanSaveRecording = false;
                 PartialText = string.Empty;
                 _cts = new CancellationTokenSource();
-                _ = _pipeline.StartSessionAsync(_cts.Token);
+                _ = Task.Run(() => _pipeline.StartSessionAsync(_cts.Token));
             }
         });
     }
 
-    private async void OnPushToTalkReleased(object? sender, EventArgs e)
+    private void OnPushToTalkReleased(object? sender, EventArgs e)
     {
-        await Application.Current!.Dispatcher.InvokeAsync(async () =>
+        Application.Current?.Dispatcher.InvokeAsync(() =>
         {
-            if (Status == AppStatus.Listening)
+            if (Status == AppStatus.Listening && !_isStopping)
             {
-                await _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
+                _isStopping = true;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
+                    }
+                    finally
+                    {
+                        Application.Current?.Dispatcher.InvokeAsync(() => _isStopping = false);
+                    }
+                });
             }
         });
     }
@@ -179,14 +222,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (IsRecording)
         {
-            _ = _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
+            if (_isStopping) return;
+            _isStopping = true;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
+                }
+                finally
+                {
+                    Application.Current?.Dispatcher.InvokeAsync(() => _isStopping = false);
+                }
+            });
         }
         else
         {
             CanSaveRecording = false;
             PartialText = string.Empty;
             _cts = new CancellationTokenSource();
-            _ = _pipeline.StartSessionAsync(_cts.Token);
+            _ = Task.Run(() => _pipeline.StartSessionAsync(_cts.Token));
         }
     }
 
