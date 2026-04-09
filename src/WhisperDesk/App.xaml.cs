@@ -47,7 +47,7 @@ public partial class App : Application
         var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
         pipeline.StateChanged += (_, pipelineState) =>
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.InvokeAsync(() =>
             {
                 var appStatus = MapToAppStatus(pipelineState);
                 if (_trayIcon != null)
@@ -68,7 +68,7 @@ public partial class App : Application
 
         pipeline.ErrorOccurred += (_, error) =>
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.InvokeAsync(() =>
             {
                 _overlayWindow?.ShowForStatus(AppStatus.Error, error.Message);
             });

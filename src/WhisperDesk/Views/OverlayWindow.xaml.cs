@@ -138,7 +138,7 @@ public partial class OverlayWindow : Window
 
     public void ShowForStatus(AppStatus status, string? errorMessage = null)
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.InvokeAsync(() =>
         {
             _autoHideTimer?.Stop();
             StopActiveAnimations();
@@ -237,16 +237,10 @@ public partial class OverlayWindow : Window
         SpinnerPanel.Visibility = Visibility.Collapsed;
         CheckIcon.Visibility = Visibility.Visible;
         ErrorIcon.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Pasted!";
-
-        // Auto-paste to active window
-        Task.Run(async () =>
-        {
-            await Task.Delay(150);
-            Dispatcher.Invoke(() => _pasteService?.PasteToActiveWindow());
-        });
+        StatusText.Text = "Done!";
 
         // Auto-hide after 2 seconds
+        // Note: paste is handled by MainViewModel.OnSessionCompleted after clipboard write completes
         _autoHideTimer!.Interval = TimeSpan.FromSeconds(2);
         _autoHideTimer.Start();
     }
@@ -270,7 +264,7 @@ public partial class OverlayWindow : Window
 
     public void HideOverlay()
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.InvokeAsync(() =>
         {
             if (RootContainer.Opacity < 0.1) return;
 
