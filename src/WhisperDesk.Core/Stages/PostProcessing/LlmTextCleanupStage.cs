@@ -1,4 +1,3 @@
-using MethodTimer;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Pipeline;
@@ -36,11 +35,9 @@ public class LlmTextCleanupStage : IPostProcessingStage
         _llmProvider = llmProvider;
     }
 
-    [Time]
+    [Trace]
     public async Task<string> ProcessAsync(string text, PostProcessingContext context, CancellationToken ct = default)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _logger.LogInformation("[LlmCleanup] Cleaning {Length} chars via {Provider}.", text.Length, _llmProvider.Name);
 
         var result = await _llmProvider.ProcessTextAsync(

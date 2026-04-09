@@ -3,7 +3,6 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
-using MethodTimer;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Models;
@@ -92,11 +91,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _hotkeyService.Start();
     }
 
-    [Time]
+    [Trace]
     private void OnPipelineStateChanged(object? sender, PipelineState pipelineState)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         Application.Current?.Dispatcher.Invoke(() =>
         {
             var appStatus = MapToAppStatus(pipelineState);
@@ -107,11 +104,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
-    [Time]
+    [Trace]
     private void OnSessionCompleted(object? sender, PipelineResult result)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         Application.Current?.Dispatcher.Invoke(() =>
         {
             RawText = result.RawTranscript;
@@ -131,11 +126,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _ = _logService.LogTranscriptionAsync(result);
     }
 
-    [Time]
+    [Trace]
     private void OnPipelineError(object? sender, PipelineError error)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         Application.Current?.Dispatcher.Invoke(() =>
         {
             LastError = error.Message;
@@ -144,22 +137,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
-    [Time]
+    [Trace]
     private void OnPartialTranscript(object? sender, string partialText)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         Application.Current?.Dispatcher.Invoke(() =>
         {
             PartialText = partialText;
         });
     }
 
-    [Time]
+    [Trace]
     private void OnPushToTalkPressed(object? sender, EventArgs e)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         Application.Current?.Dispatcher.Invoke(() =>
         {
             if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
@@ -172,11 +161,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
-    [Time]
+    [Trace]
     private async void OnPushToTalkReleased(object? sender, EventArgs e)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         await Application.Current!.Dispatcher.InvokeAsync(async () =>
         {
             if (Status == AppStatus.Listening)
@@ -194,12 +181,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    [Time]
+    [Trace]
     [RelayCommand]
     private void ToggleRecording()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         if (IsRecording)
         {
             _ = _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
@@ -213,24 +198,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    [Time]
+    [Trace]
     [RelayCommand]
     private void CopyToClipboard()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         if (!string.IsNullOrEmpty(CleanedText))
         {
             Clipboard.SetText(CleanedText);
         }
     }
 
-    [Time]
+    [Trace]
     [RelayCommand]
     private async Task OpenEvalDialog()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         try
         {
             var wavData = _pipeline.GetRecordingAsWav();

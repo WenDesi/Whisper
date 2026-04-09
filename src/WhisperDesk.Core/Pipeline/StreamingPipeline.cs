@@ -1,4 +1,3 @@
-using MethodTimer;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Diagnostics;
@@ -64,11 +63,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
     }
 
-    [Time]
+    [Trace]
     public async Task StartSessionAsync(CancellationToken ct = default)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         if (!await _sessionLock.WaitAsync(0, ct))
         {
             _logger.LogWarning("[Pipeline] Session start already in progress.");
@@ -143,11 +140,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
         }
     }
 
-    [Time]
+    [Trace]
     public async Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         if (State != PipelineState.Listening)
         {
             _logger.LogWarning("[Pipeline] Cannot stop session in state {State}.", State);
@@ -217,11 +212,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
         }
     }
 
-    [Time]
+    [Trace]
     public async Task AbortSessionAsync()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _logger.LogInformation("[Pipeline] Aborting session...");
 
         _audioRouter.Stop();
@@ -243,11 +236,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     public byte[]? GetRecordingAsWav() => _audioRouter.GetRecordingAsWav();
 
-    [Time]
+    [Trace]
     private async Task PrepareContextAsync(SessionContextBuilder builder, CancellationToken ct)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         var tasks = _contextProviders.Select(async provider =>
         {
             try
@@ -264,11 +255,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
         await Task.WhenAll(tasks);
     }
 
-    [Time]
+    [Trace]
     private async Task<string> RunPostProcessingAsync(string text, CancellationToken ct)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         var context = new PostProcessingContext
         {
             RawTranscript = text,

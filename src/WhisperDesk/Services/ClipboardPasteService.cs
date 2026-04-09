@@ -1,5 +1,4 @@
 using System.Windows.Forms;
-using MethodTimer;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Diagnostics;
 
@@ -17,11 +16,9 @@ public class ClipboardPasteService
         _logger = logger;
     }
 
-    [Time]
+    [Trace]
     public void PasteToActiveWindow()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         try
         {
             // Small delay to let the hotkey keys release

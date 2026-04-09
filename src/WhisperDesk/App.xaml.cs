@@ -4,7 +4,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Hardcodet.Wpf.TaskbarNotification;
-using MethodTimer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -26,11 +25,9 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
 
-    [Time]
+    [Trace]
     protected override void OnStartup(StartupEventArgs e)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         base.OnStartup(e);
 
         var services = new ServiceCollection();
@@ -80,11 +77,9 @@ public partial class App : Application
         };
     }
 
-    [Time]
+    [Trace]
     private void ConfigureServices(IServiceCollection services)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         // Configuration
         // For single-file publish, AppContext.BaseDirectory points to the temp extraction dir.
         // Use the exe's actual location so appsettings.json sits next to the exe.
@@ -115,7 +110,7 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        // Initialize trace logger for MethodTimer.Fody
+        // Initialize trace logger for [Trace] Metalama aspect
         var traceLoggerFactory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
         MethodTimeLogger.Initialize(
             traceLoggerFactory.CreateLogger("Trace"));
@@ -160,11 +155,9 @@ public partial class App : Application
         _ => AppStatus.Idle
     };
 
-    [Time]
+    [Trace]
     private void SetupTrayIcon()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _trayIcon = new TaskbarIcon
         {
             ToolTipText = "WhisperDesk - Ready",
@@ -194,11 +187,9 @@ public partial class App : Application
         _trayIcon.TrayMouseDoubleClick += (_, _) => _mainWindow?.ShowFromTray();
     }
 
-    [Time]
+    [Trace]
     private void ExitApplication()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _trayIcon?.Dispose();
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();

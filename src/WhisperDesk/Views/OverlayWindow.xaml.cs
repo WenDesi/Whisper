@@ -6,7 +6,6 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using MethodTimer;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
@@ -122,11 +121,9 @@ public partial class OverlayWindow : Window
     /// Call once at startup to make the window permanently visible (but transparent).
     /// Positions at top-center of screen.
     /// </summary>
-    [Time]
+    [Trace]
     public void Initialize()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         var helper = new WindowInteropHelper(this);
         helper.EnsureHandle();
 
@@ -141,11 +138,9 @@ public partial class OverlayWindow : Window
         _pasteService = pasteService;
     }
 
-    [Time]
+    [Trace]
     public void ShowForStatus(AppStatus status, string? errorMessage = null)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         Dispatcher.Invoke(() =>
         {
             _autoHideTimer?.Stop();
@@ -235,11 +230,9 @@ public partial class OverlayWindow : Window
         spinner.Begin(this, true);
     }
 
-    [Time]
+    [Trace]
     private void ShowDone()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         StopActiveAnimations();
 
         SetAccentColor("#69F0AE");
@@ -283,11 +276,9 @@ public partial class OverlayWindow : Window
         _autoHideTimer.Start();
     }
 
-    [Time]
+    [Trace]
     public void HideOverlay()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         Dispatcher.Invoke(() =>
         {
             if (RootContainer.Opacity < 0.1) return;
@@ -408,11 +399,9 @@ public partial class OverlayWindow : Window
         }
     }
 
-    [Time]
+    [Trace]
     private void PositionOnCurrentScreen()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         if (!GetCursorPos(out var cursorPt)) return;
 
         var monitor = MonitorFromPoint(cursorPt, MONITOR_DEFAULTTONEAREST);
@@ -453,11 +442,9 @@ public partial class OverlayWindow : Window
     /// <summary>
     /// Sample the screen behind the overlay position and set the border to the inverse color.
     /// </summary>
-    [Time]
+    [Trace]
     private void ApplyAdaptiveBorder()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         try
         {
             // Get overlay position in physical pixels for screen capture

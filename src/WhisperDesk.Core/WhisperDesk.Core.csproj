@@ -6,8 +6,7 @@
     <RootNamespace>WhisperDesk.Core</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Fody" Version="6.9.2" PrivateAssets="all" />
-    <PackageReference Include="MethodTimer.Fody" Version="3.2.2" PrivateAssets="all" />
+    <PackageReference Include="Metalama.Framework" Version="2025.1.6" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />

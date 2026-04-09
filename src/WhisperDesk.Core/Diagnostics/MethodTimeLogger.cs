@@ -1,16 +1,12 @@
-using System.Reflection;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 
 namespace WhisperDesk.Core.Diagnostics;
 
 /// <summary>
-/// Interceptor for MethodTimer.Fody + span tracking.
-///
-/// Usage: Add [Time] attribute to method, plus one line:
-///   using var _span = MethodTimeLogger.BeginSpan();
-///
-/// The Fody weaver calls Log() at method exit with the elapsed time.
-/// BeginSpan() pushes a trace/span context; Log() pops and logs with IDs.
+/// Span-based trace logger. Called automatically by the [Trace] Metalama aspect.
+/// Maintains trace/span/parent IDs via AsyncLocal for call chain tracking.
 /// </summary>
 public static class MethodTimeLogger
 {
@@ -22,38 +18,17 @@ public static class MethodTimeLogger
 
     /// <summary>
     /// Push a new span onto the async-local call stack.
-    /// Call as: using var _span = MethodTimeLogger.BeginSpan();
+    /// Returns an IDisposable that pops the span and logs duration on dispose.
     /// </summary>
-    public static IDisposable BeginSpan()
+    public static IDisposable BeginSpan([CallerMemberName] string method = "", [CallerFilePath] string filePath = "")
     {
         var parent = _current.Value;
         var traceId = parent?.TraceId ?? GenerateId();
         var spanId = GenerateId();
-        var ctx = new SpanContext(traceId, spanId, parent);
+        var className = Path.GetFileNameWithoutExtension(filePath);
+        var ctx = new SpanContext(traceId, spanId, parent, className, method);
         _current.Value = ctx;
         return new SpanScope(ctx);
-    }
-
-    /// <summary>
-    /// Called automatically by MethodTimer.Fody at method exit.
-    /// </summary>
-    public static void Log(MethodBase methodBase, TimeSpan elapsed, string message)
-    {
-        var ctx = _current.Value;
-        var traceId = ctx?.TraceId ?? "-";
-        var spanId = ctx?.SpanId ?? "-";
-        var parentSpanId = ctx?.Parent?.SpanId ?? "-";
-        var className = methodBase.DeclaringType?.Name ?? "?";
-
-        _logger?.LogInformation(
-            "[TRACE] {Class}.{Method} trace={TraceId} span={SpanId} parent={ParentSpanId} thread={ThreadId} duration={Duration}ms",
-            className,
-            methodBase.Name,
-            traceId,
-            spanId,
-            parentSpanId,
-            Environment.CurrentManagedThreadId,
-            elapsed.TotalMilliseconds.ToString("F1"));
     }
 
     private static string GenerateId()
@@ -62,15 +37,42 @@ public static class MethodTimeLogger
         return id.ToString("x8");
     }
 
-    private sealed class SpanContext(string traceId, string spanId, SpanContext? parent)
+    private sealed class SpanContext
     {
-        public string TraceId => traceId;
-        public string SpanId => spanId;
-        public SpanContext? Parent => parent;
+        public string TraceId { get; }
+        public string SpanId { get; }
+        public SpanContext? Parent { get; }
+        public string ClassName { get; }
+        public string MethodName { get; }
+        public long StartTimestamp { get; }
+
+        public SpanContext(string traceId, string spanId, SpanContext? parent, string className, string methodName)
+        {
+            TraceId = traceId;
+            SpanId = spanId;
+            Parent = parent;
+            ClassName = className;
+            MethodName = methodName;
+            StartTimestamp = Stopwatch.GetTimestamp();
+        }
     }
 
     private sealed class SpanScope(SpanContext context) : IDisposable
     {
-        public void Dispose() => _current.Value = context.Parent;
+        public void Dispose()
+        {
+            var elapsed = Stopwatch.GetElapsedTime(context.StartTimestamp);
+            _current.Value = context.Parent;
+
+            _logger?.LogInformation(
+                "[TRACE] {Class}.{Method} trace={TraceId} span={SpanId} parent={ParentSpanId} thread={ThreadId} duration={Duration}ms",
+                context.ClassName,
+                context.MethodName,
+                context.TraceId,
+                context.SpanId,
+                context.Parent?.SpanId ?? "-",
+                Environment.CurrentManagedThreadId,
+                elapsed.TotalMilliseconds.ToString("F1"));
+        }
     }
 }

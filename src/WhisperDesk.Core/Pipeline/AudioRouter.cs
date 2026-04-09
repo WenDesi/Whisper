@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using MethodTimer;
 using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 using WhisperDesk.Core.Diagnostics;
@@ -43,11 +42,9 @@ public class AudioRouter : IDisposable
     /// <summary>
     /// Start microphone capture. Audio is buffered until SetSink is called.
     /// </summary>
-    [Time]
+    [Trace]
     public void Start(AudioFormat format)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _sinkReady = false;
         _currentFormat = format;
         _chunkCount = 0;
@@ -75,22 +72,18 @@ public class AudioRouter : IDisposable
     /// Set the audio sink (typically the STT provider's PushAudio method).
     /// Flushes any pre-buffered audio immediately.
     /// </summary>
-    [Time]
+    [Trace]
     public void SetSink(Action<ReadOnlyMemory<byte>> sink)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _audioSink = sink;
         _sinkReady = true;
         FlushPreBuffer();
     }
 
     /// <summary>Stop microphone capture.</summary>
-    [Time]
+    [Trace]
     public void Stop()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         if (_waveIn != null)
         {
             _waveIn.StopRecording();
@@ -118,11 +111,9 @@ public class AudioRouter : IDisposable
     }
 
     /// <summary>Get captured audio as a WAV byte array. Returns null if no data.</summary>
-    [Time]
+    [Trace]
     public byte[]? GetRecordingAsWav()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         byte[] pcmData;
         lock (_recordingLock)
         {
@@ -201,11 +192,9 @@ public class AudioRouter : IDisposable
         }
     }
 
-    [Time]
+    [Trace]
     private void FlushPreBuffer()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         int flushed = 0;
         while (_preBuffer.TryDequeue(out var chunk))
         {

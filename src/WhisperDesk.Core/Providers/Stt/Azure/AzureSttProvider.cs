@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using MethodTimer;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.Extensions.Logging;
@@ -39,11 +38,9 @@ public class AzureSttProvider : IStreamingSttProvider
         _config = config;
     }
 
-    [Time]
+    [Trace]
     public async Task StartSessionAsync(SttSessionOptions options, CancellationToken ct = default)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _logger.LogInformation("[AzureStt] Starting session...");
 
         _results = new ConcurrentQueue<string>();
@@ -134,20 +131,16 @@ public class AzureSttProvider : IStreamingSttProvider
         _pushStream?.Write(audioData.ToArray());
     }
 
-    [Time]
+    [Trace]
     public void SignalEndOfAudio()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _pushStream?.Close();
         _logger.LogInformation("[AzureStt] End of audio signaled.");
     }
 
-    [Time]
+    [Trace]
     public async Task<string> EndSessionAsync()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _logger.LogInformation("[AzureStt] Ending session...");
 
         // Dispose cancellation token registration

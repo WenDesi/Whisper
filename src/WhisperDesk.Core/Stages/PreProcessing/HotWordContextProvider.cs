@@ -1,5 +1,4 @@
 using System.Text.Json;
-using MethodTimer;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Diagnostics;
@@ -28,11 +27,9 @@ public class HotWordContextProvider : IContextProvider
         _hotWordsFilePath = Path.Combine(exeDir, config.HotWordsFile);
     }
 
-    [Time]
+    [Trace]
     public async Task ContributeAsync(SessionContextBuilder builder, CancellationToken ct = default)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         if (!File.Exists(_hotWordsFilePath))
         {
             _logger.LogDebug("[HotWords] File not found: {Path}. Skipping.", _hotWordsFilePath);

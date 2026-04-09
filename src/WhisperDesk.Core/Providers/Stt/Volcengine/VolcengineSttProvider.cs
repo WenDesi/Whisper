@@ -5,7 +5,6 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
-using MethodTimer;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
@@ -59,11 +58,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
         _config = config;
     }
 
-    [Time]
+    [Trace]
     public async Task StartSessionAsync(SttSessionOptions options, CancellationToken ct = default)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _logger.LogInformation("[Volcengine] Starting session...");
 
         _results = new ConcurrentQueue<string>();
@@ -115,22 +112,18 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
     }
 
-    [Time]
+    [Trace]
     public void SignalEndOfAudio()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _logger.LogInformation("[Volcengine] End of audio signaled.");
         // Write a sentinel value to signal the send loop to send the last-audio frame
         _audioChannel?.Writer.TryWrite(new AudioChunk([], IsLast: true));
         _audioChannel?.Writer.TryComplete();
     }
 
-    [Time]
+    [Trace]
     public async Task<string> EndSessionAsync()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _logger.LogInformation("[Volcengine] Ending session...");
 
         // Wait for the session to complete (server sends is_last_package=true)
@@ -271,11 +264,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     #region Session Messages
 
-    [Time]
+    [Trace]
     private async Task SendFullClientRequestAsync(SttSessionOptions options)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         var requestPayload = new VolcengineRequest
         {
             User = new VolcengineUserInfo { Uid = "whisperdesk" },
@@ -332,11 +323,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     #region Background Loops
 
-    [Time]
+    [Trace]
     private async Task SendLoopAsync(CancellationToken ct)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         try
         {
             int chunksSent = 0;
@@ -369,11 +358,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
     }
 
-    [Time]
+    [Trace]
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         // Server responses can be up to ~64KB; use a pooled buffer
         var buffer = ArrayPool<byte>.Shared.Rent(65536);
         try
@@ -559,11 +546,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     #region WebSocket Cleanup
 
-    [Time]
+    [Trace]
     private async Task CloseWebSocketAsync()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         if (_webSocket is { State: WebSocketState.Open or WebSocketState.CloseReceived })
         {
             try

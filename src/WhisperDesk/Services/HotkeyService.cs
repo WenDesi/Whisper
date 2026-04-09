@@ -1,6 +1,5 @@
 using System.IO;
 using H.Hooks;
-using MethodTimer;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Models;
 using Microsoft.Extensions.Logging;
@@ -27,11 +26,9 @@ public class HotkeyService : IDisposable
         _settings = settings;
     }
 
-    [Time]
+    [Trace]
     public void Start()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         _keyboardHook = new LowLevelKeyboardHook
         {
             HandleModifierKeys = true
@@ -44,11 +41,9 @@ public class HotkeyService : IDisposable
             _settings.PushToTalk, _settings.PasteTranscription);
     }
 
-    [Time]
+    [Trace]
     private void OnKeyDown(object? sender, KeyboardEventArgs e)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         foreach (var key in e.Keys.Values)
         {
             _pressedKeys.Add(key);
@@ -70,11 +65,9 @@ public class HotkeyService : IDisposable
         }
     }
 
-    [Time]
+    [Trace]
     private void OnKeyUp(object? sender, KeyboardEventArgs e)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         foreach (var key in e.Keys.Values)
         {
             _pressedKeys.Remove(key);

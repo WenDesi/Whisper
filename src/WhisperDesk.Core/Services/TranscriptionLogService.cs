@@ -1,4 +1,3 @@
-using MethodTimer;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
@@ -25,11 +24,9 @@ public class TranscriptionLogService
         _logFilePath = Path.Combine(appDataDir, logFileName);
     }
 
-    [Time]
+    [Trace]
     public async Task LogTranscriptionAsync(PipelineResult result)
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         await _writeLock.WaitAsync();
 
         try

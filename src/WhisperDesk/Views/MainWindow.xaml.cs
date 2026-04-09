@@ -2,7 +2,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
-using MethodTimer;
 using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.ViewModels;
 
@@ -46,21 +45,17 @@ public partial class MainWindow : Window
         Hide();
     }
 
-    [Time]
+    [Trace]
     public void ShowFromTray()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         Show();
         WindowState = WindowState.Normal;
         Activate();
     }
 
-    [Time]
+    [Trace]
     public void ForceClose()
     {
-        using var _span = MethodTimeLogger.BeginSpan();
-
         // Called from tray exit
         Closing -= Window_Closing;
         Close();
