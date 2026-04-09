@@ -23,10 +23,13 @@ public static class PipelineServiceRegistration
         PipelineConfig pipelineConfig,
         IConfiguration configuration)
     {
+        System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registering pipeline services...");
+
         services.AddSingleton(pipelineConfig);
 
         // Audio routing
         services.AddSingleton<AudioRouter>();
+        System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registered AudioRouter");
 
         // STT provider
         services.AddSttProvider(pipelineConfig.SttProvider, configuration);
@@ -36,11 +39,13 @@ public static class PipelineServiceRegistration
 
         // Context providers
         services.AddSingleton<IContextProvider, HotWordContextProvider>();
+        System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registered HotWordContextProvider");
 
         // Post-processing stages
         if (pipelineConfig.EnableTextCleanup)
         {
             services.AddSingleton<IPostProcessingStage, LlmTextCleanupStage>();
+            System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registered LlmTextCleanupStage");
         }
 
         // Logging service
@@ -48,21 +53,26 @@ public static class PipelineServiceRegistration
 
         // Pipeline orchestrator
         services.AddSingleton<IPipelineController, StreamingPipeline>();
+        System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Pipeline registration complete");
 
         return services;
     }
 
     private static void AddSttProvider(this IServiceCollection services, string provider, IConfiguration configuration)
     {
+        System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registering STT provider: {provider}");
+
         switch (provider.ToLowerInvariant())
         {
             case "azurespeech":
                 services.BindAndRegister<AzureSttConfig>(configuration, "AzureSpeech");
                 services.AddSingleton<IStreamingSttProvider, AzureSttProvider>();
+                System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registered AzureSttProvider");
                 break;
             case "volcengine":
                 services.BindAndRegister<VolcengineSttConfig>(configuration, "VolcengineSpeech");
                 services.AddSingleton<IStreamingSttProvider, VolcengineSttProvider>();
+                System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registered VolcengineSttProvider");
                 break;
             default:
                 throw new InvalidOperationException(
@@ -72,11 +82,14 @@ public static class PipelineServiceRegistration
 
     private static void AddLlmProvider(this IServiceCollection services, string provider, IConfiguration configuration)
     {
+        System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registering LLM provider: {provider}");
+
         switch (provider.ToLowerInvariant())
         {
             case "azureopenai":
                 services.BindAndRegister<AzureOpenAILlmConfig>(configuration, "AzureOpenAI");
                 services.AddSingleton<ILlmProvider, AzureOpenAILlmProvider>();
+                System.Diagnostics.Debug.WriteLine($"[PipelineRegistration] Registered AzureOpenAILlmProvider");
                 break;
             default:
                 throw new InvalidOperationException(

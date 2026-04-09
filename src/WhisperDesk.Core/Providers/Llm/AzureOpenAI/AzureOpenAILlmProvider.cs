@@ -1,8 +1,10 @@
 using System.ClientModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
+using WhisperDesk.Core.Diagnostics;
 
 namespace WhisperDesk.Core.Providers.Llm.AzureOpenAI;
 
@@ -28,6 +30,11 @@ public class AzureOpenAILlmProvider : ILlmProvider
         LlmRequestOptions? options = null,
         CancellationToken ct = default)
     {
+        using var activity = DiagnosticSources.Llm.StartActivity("AzureOpenAI.ProcessText");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("llm.model", _config.ChatDeployment);
+        activity?.SetTag("llm.input.length", userText.Length);
+
         _logger.LogInformation("[AzureOpenAI] Processing text ({Length} chars) via {Model}.",
             userText.Length, _config.ChatDeployment);
 
@@ -54,6 +61,8 @@ public class AzureOpenAILlmProvider : ILlmProvider
         _logger.LogInformation("[AzureOpenAI] Response: {InLen} -> {OutLen} chars.",
             userText.Length, result.Length);
 
+        activity?.SetTag("llm.output.length", result.Length);
+
         return result;
     }
 
@@ -63,6 +72,11 @@ public class AzureOpenAILlmProvider : ILlmProvider
         LlmRequestOptions? options = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        using var activity = DiagnosticSources.Llm.StartActivity("AzureOpenAI.ProcessTextStreaming");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("llm.model", _config.ChatDeployment);
+        activity?.SetTag("llm.input.length", userText.Length);
+
         _logger.LogInformation("[AzureOpenAI] Streaming text ({Length} chars) via {Model}.",
             userText.Length, _config.ChatDeployment);
 
@@ -79,16 +93,20 @@ public class AzureOpenAILlmProvider : ILlmProvider
             chatOptions.Temperature = temp;
         }
 
+        int chunkCount = 0;
         await foreach (var update in chatClient.CompleteChatStreamingAsync(messages, chatOptions, ct))
         {
             foreach (var part in update.ContentUpdate)
             {
                 if (!string.IsNullOrEmpty(part.Text))
                 {
+                    chunkCount++;
                     yield return part.Text;
                 }
             }
         }
+
+        activity?.SetTag("llm.stream.chunks", chunkCount);
     }
 
     private ChatClient CreateClient()

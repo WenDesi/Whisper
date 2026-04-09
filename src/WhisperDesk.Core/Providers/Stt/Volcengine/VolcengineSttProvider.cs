@@ -1,11 +1,13 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 
 namespace WhisperDesk.Core.Providers.Stt.Volcengine;
@@ -59,6 +61,10 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     public async Task StartSessionAsync(SttSessionOptions options, CancellationToken ct = default)
     {
+        using var activity = DiagnosticSources.Stt.StartActivity("Volcengine.StartSession");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("stt.provider", "Volcengine");
+
         _logger.LogInformation("[Volcengine] Starting session...");
 
         _results = new ConcurrentQueue<string>();
@@ -81,18 +87,30 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
         try
         {
-            await _webSocket.ConnectAsync(new Uri(WebSocketEndpoint), _sessionCts.Token);
+            using (var connectStep = DiagnosticSources.Stt.StartActivity("Volcengine.StartSession.WebSocketConnect"))
+            {
+                connectStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                connectStep?.SetTag("connect.id", connectId);
+                await _webSocket.ConnectAsync(new Uri(WebSocketEndpoint), _sessionCts.Token);
+            }
             _logger.LogInformation("[Volcengine] WebSocket connected. ConnectId={ConnectId}", connectId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Volcengine] Failed to connect WebSocket.");
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("exception.type", ex.GetType().FullName);
+            activity?.AddTag("exception.message", ex.Message);
             ErrorOccurred?.Invoke(this, new SttError("ConnectionFailed", ex.Message, ex));
             throw;
         }
 
         // Send the full client request (first message)
-        await SendFullClientRequestAsync(options);
+        using (var requestStep = DiagnosticSources.Stt.StartActivity("Volcengine.StartSession.SendFullClientRequest"))
+        {
+            requestStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+            await SendFullClientRequestAsync(options);
+        }
 
         // Start background loops
         _receiveLoopTask = Task.Run(() => ReceiveLoopAsync(_sessionCts.Token), _sessionCts.Token);
@@ -112,6 +130,10 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     public void SignalEndOfAudio()
     {
+        using var activity = DiagnosticSources.Stt.StartActivity("Volcengine.SignalEndOfAudio");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("stt.provider", "Volcengine");
+
         _logger.LogInformation("[Volcengine] End of audio signaled.");
         // Write a sentinel value to signal the send loop to send the last-audio frame
         _audioChannel?.Writer.TryWrite(new AudioChunk([], IsLast: true));
@@ -120,36 +142,53 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     public async Task<string> EndSessionAsync()
     {
+        using var activity = DiagnosticSources.Stt.StartActivity("Volcengine.EndSession");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("stt.provider", "Volcengine");
+
         _logger.LogInformation("[Volcengine] Ending session...");
 
         // Wait for the session to complete (server sends is_last_package=true)
-        if (_sessionCompleteTcs != null)
+        using (var waitStep = DiagnosticSources.Stt.StartActivity("Volcengine.EndSession.WaitForCompletion"))
         {
-            await Task.WhenAny(_sessionCompleteTcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+            waitStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+            if (_sessionCompleteTcs != null)
+            {
+                var completedTask = await Task.WhenAny(_sessionCompleteTcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+                waitStep?.SetTag("timed_out", completedTask != _sessionCompleteTcs.Task);
+            }
         }
 
         // Cancel background loops
         _sessionCts?.Cancel();
 
         // Wait for loops to finish gracefully
-        try
+        using (var sendWaitStep = DiagnosticSources.Stt.StartActivity("Volcengine.EndSession.WaitSendLoop"))
         {
-            if (_sendLoopTask != null)
-                await _sendLoopTask.WaitAsync(TimeSpan.FromSeconds(2));
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
-        {
-            // Expected during shutdown
+            sendWaitStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+            try
+            {
+                if (_sendLoopTask != null)
+                    await _sendLoopTask.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+            {
+                // Expected during shutdown
+            }
         }
 
-        try
+        using (var receiveWaitStep = DiagnosticSources.Stt.StartActivity("Volcengine.EndSession.WaitReceiveLoop"))
         {
-            if (_receiveLoopTask != null)
-                await _receiveLoopTask.WaitAsync(TimeSpan.FromSeconds(2));
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
-        {
-            // Expected during shutdown
+            receiveWaitStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+            try
+            {
+                if (_receiveLoopTask != null)
+                    await _receiveLoopTask.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+            {
+                // Expected during shutdown
+            }
         }
 
         // Close WebSocket
@@ -159,6 +198,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
         var fullText = string.Join("", segments);
         _logger.LogInformation("[Volcengine] Session ended. {Length} chars from {Segments} segments.",
             fullText.Length, segments.Length);
+
+        activity?.SetTag("transcript.length", fullText.Length);
+        activity?.SetTag("transcript.segments", segments.Length);
 
         return fullText;
     }
@@ -320,8 +362,13 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     private async Task SendLoopAsync(CancellationToken ct)
     {
+        using var activity = DiagnosticSources.Stt.StartActivity("Volcengine.SendLoop");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("stt.provider", "Volcengine");
+
         try
         {
+            int chunksSent = 0;
             await foreach (var chunk in _audioChannel!.Reader.ReadAllAsync(ct))
             {
                 if (_webSocket?.State != WebSocketState.Open)
@@ -331,6 +378,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
                 }
 
                 await SendAudioFrameAsync(chunk.Data, chunk.IsLast);
+                chunksSent++;
 
                 if (chunk.IsLast)
                 {
@@ -338,6 +386,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
                     break;
                 }
             }
+            activity?.SetTag("chunks.sent", chunksSent);
         }
         catch (OperationCanceledException)
         {
@@ -346,16 +395,24 @@ public class VolcengineSttProvider : IStreamingSttProvider
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Volcengine] Error in send loop.");
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("exception.type", ex.GetType().FullName);
+            activity?.AddTag("exception.message", ex.Message);
             ErrorOccurred?.Invoke(this, new SttError("SendError", ex.Message, ex));
         }
     }
 
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
+        using var activity = DiagnosticSources.Stt.StartActivity("Volcengine.ReceiveLoop");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("stt.provider", "Volcengine");
+
         // Server responses can be up to ~64KB; use a pooled buffer
         var buffer = ArrayPool<byte>.Shared.Rent(65536);
         try
         {
+            int messagesReceived = 0;
             while (!ct.IsCancellationRequested && _webSocket?.State == WebSocketState.Open)
             {
                 using var messageStream = new MemoryStream();
@@ -368,6 +425,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
                     {
                         _logger.LogInformation("[Volcengine] WebSocket closed by server.");
                         _sessionCompleteTcs?.TrySetResult(true);
+                        activity?.SetTag("messages.received", messagesReceived);
                         return;
                     }
                     messageStream.Write(buffer, 0, result.Count);
@@ -375,7 +433,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
                 var messageBytes = messageStream.ToArray();
                 ProcessServerMessage(messageBytes);
+                messagesReceived++;
             }
+            activity?.SetTag("messages.received", messagesReceived);
         }
         catch (OperationCanceledException)
         {
@@ -389,6 +449,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Volcengine] Error in receive loop.");
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("exception.type", ex.GetType().FullName);
+            activity?.AddTag("exception.message", ex.Message);
             ErrorOccurred?.Invoke(this, new SttError("ReceiveError", ex.Message, ex));
             _sessionCompleteTcs?.TrySetResult(true);
         }
@@ -537,6 +600,9 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     private async Task CloseWebSocketAsync()
     {
+        using var activity = DiagnosticSources.Stt.StartActivity("Volcengine.CloseWebSocket");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+
         if (_webSocket is { State: WebSocketState.Open or WebSocketState.CloseReceived })
         {
             try
@@ -547,6 +613,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
             catch (Exception ex)
             {
                 _logger.LogDebug(ex, "[Volcengine] WebSocket close failed (non-critical).");
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             }
         }
 

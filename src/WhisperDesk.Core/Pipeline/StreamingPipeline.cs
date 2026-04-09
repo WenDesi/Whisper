@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Providers.Stt;
 
@@ -64,9 +66,13 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     public async Task StartSessionAsync(CancellationToken ct = default)
     {
+        using var activity = DiagnosticSources.Pipeline.StartActivity("Pipeline.StartSession");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+
         if (!await _sessionLock.WaitAsync(0, ct))
         {
             _logger.LogWarning("[Pipeline] Session start already in progress.");
+            activity?.SetTag("result", "already_in_progress");
             return;
         }
 
@@ -75,6 +81,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
             if (State != PipelineState.Idle && State != PipelineState.Completed && State != PipelineState.Error)
             {
                 _logger.LogWarning("[Pipeline] Cannot start session in state {State}.", State);
+                activity?.SetTag("result", "invalid_state");
+                activity?.SetTag("pipeline.state", State.ToString());
                 return;
             }
 
@@ -91,14 +99,22 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 };
 
                 // 1. Start mic capture IMMEDIATELY (buffered)
-                _audioRouter.Start(audioFormat);
+                using (var audioStep = DiagnosticSources.Pipeline.StartActivity("Pipeline.StartSession.AudioStart"))
+                {
+                    audioStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                    _audioRouter.Start(audioFormat);
+                }
 
                 // 2. Prepare context + start STT in parallel
                 _contextBuilder = new SessionContextBuilder();
                 _contextBuilder.AddLanguages(_config.AutoDetectLanguages);
 
                 // Run context providers in parallel (non-blocking)
-                await PrepareContextAsync(_contextBuilder, ct);
+                using (var contextStep = DiagnosticSources.Pipeline.StartActivity("Pipeline.StartSession.PrepareContext"))
+                {
+                    contextStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                    await PrepareContextAsync(_contextBuilder, ct);
+                }
 
                 // 3. Build STT session options with collected context
                 var sttOptions = new SttSessionOptions
@@ -113,16 +129,31 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 _sttProvider.ErrorOccurred += OnSttError;
 
                 // Start STT session
-                await _sttProvider.StartSessionAsync(sttOptions, ct);
+                using (var sttStep = DiagnosticSources.Pipeline.StartActivity("Pipeline.StartSession.SttStart"))
+                {
+                    sttStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                    sttStep?.SetTag("stt.provider", _sttProvider.Name);
+                    sttStep?.SetTag("stt.languages", string.Join(",", sttOptions.Languages));
+                    sttStep?.SetTag("stt.phrase_hints.count", sttOptions.PhraseHints.Count);
+                    await _sttProvider.StartSessionAsync(sttOptions, ct);
+                }
 
                 // 4. Connect audio router to STT provider (flushes buffered audio)
-                _audioRouter.SetSink(_sttProvider.PushAudio);
+                using (var sinkStep = DiagnosticSources.Pipeline.StartActivity("Pipeline.StartSession.SetSink"))
+                {
+                    sinkStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                    _audioRouter.SetSink(_sttProvider.PushAudio);
+                }
 
                 _logger.LogInformation("[Pipeline] Session started. Streaming audio to STT.");
+                activity?.SetTag("result", "success");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[Pipeline] Failed to start session.");
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                activity?.AddTag("exception.type", ex.GetType().FullName);
+                activity?.AddTag("exception.message", ex.Message);
                 State = PipelineState.Error;
                 ErrorOccurred?.Invoke(this, new PipelineError
                 {
@@ -140,9 +171,14 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     public async Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default)
     {
+        using var activity = DiagnosticSources.Pipeline.StartActivity("Pipeline.StopSession");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+
         if (State != PipelineState.Listening)
         {
             _logger.LogWarning("[Pipeline] Cannot stop session in state {State}.", State);
+            activity?.SetTag("result", "invalid_state");
+            activity?.SetTag("pipeline.state", State.ToString());
             return null;
         }
 
@@ -151,14 +187,28 @@ public class StreamingPipeline : IPipelineController, IDisposable
             _logger.LogInformation("[Pipeline] Stopping session...");
 
             // 1. Stop mic capture
-            _audioRouter.Stop();
+            using (var audioStop = DiagnosticSources.Pipeline.StartActivity("Pipeline.StopSession.AudioStop"))
+            {
+                audioStop?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                _audioRouter.Stop();
+            }
 
             // 2. Signal end of audio to STT
             State = PipelineState.Transcribing;
-            _sttProvider.SignalEndOfAudio();
+            using (var signalStep = DiagnosticSources.Pipeline.StartActivity("Pipeline.StopSession.SignalEndOfAudio"))
+            {
+                signalStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                _sttProvider.SignalEndOfAudio();
+            }
 
             // 3. Get final transcript
-            var rawTranscript = await _sttProvider.EndSessionAsync();
+            string rawTranscript;
+            using (var endSttStep = DiagnosticSources.Pipeline.StartActivity("Pipeline.StopSession.EndSttSession"))
+            {
+                endSttStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                rawTranscript = await _sttProvider.EndSessionAsync();
+                endSttStep?.SetTag("transcript.length", rawTranscript?.Length ?? 0);
+            }
 
             // Unhook events
             _sttProvider.PartialResultReceived -= OnPartialResult;
@@ -167,6 +217,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
             if (string.IsNullOrWhiteSpace(rawTranscript))
             {
                 _logger.LogWarning("[Pipeline] STT returned empty transcript.");
+                activity?.SetTag("result", "empty_transcript");
                 State = PipelineState.Idle;
                 return null;
             }
@@ -176,7 +227,14 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
             // 4. Run post-processing stages
             State = PipelineState.PostProcessing;
-            var processedText = await RunPostProcessingAsync(rawTranscript, ct);
+            string processedText;
+            using (var postStep = DiagnosticSources.Pipeline.StartActivity("Pipeline.StopSession.PostProcessing"))
+            {
+                postStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                postStep?.SetTag("input.length", rawTranscript.Length);
+                processedText = await RunPostProcessingAsync(rawTranscript, ct);
+                postStep?.SetTag("output.length", processedText.Length);
+            }
 
             _logger.LogInformation("[Pipeline] Processed text ({Length} chars): {Text}",
                 processedText.Length, processedText);
@@ -193,11 +251,15 @@ public class StreamingPipeline : IPipelineController, IDisposable
             State = PipelineState.Completed;
             SessionCompleted?.Invoke(this, result);
 
+            activity?.SetTag("result", "success");
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Pipeline] Failed to stop session.");
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("exception.type", ex.GetType().FullName);
+            activity?.AddTag("exception.message", ex.Message);
             State = PipelineState.Error;
             ErrorOccurred?.Invoke(this, new PipelineError
             {
@@ -211,6 +273,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     public async Task AbortSessionAsync()
     {
+        using var activity = DiagnosticSources.Pipeline.StartActivity("Pipeline.AbortSession");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+
         _logger.LogInformation("[Pipeline] Aborting session...");
 
         _audioRouter.Stop();
@@ -225,6 +290,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Pipeline] Error during abort cleanup.");
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("exception.type", ex.GetType().FullName);
+            activity?.AddTag("exception.message", ex.Message);
         }
 
         State = PipelineState.Idle;
@@ -234,6 +302,10 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     private async Task PrepareContextAsync(SessionContextBuilder builder, CancellationToken ct)
     {
+        using var activity = DiagnosticSources.Pipeline.StartActivity("Pipeline.PrepareContext");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("provider.count", _contextProviders.Count());
+
         var tasks = _contextProviders.Select(async provider =>
         {
             try
@@ -252,6 +324,11 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     private async Task<string> RunPostProcessingAsync(string text, CancellationToken ct)
     {
+        using var activity = DiagnosticSources.Pipeline.StartActivity("Pipeline.RunPostProcessing");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("stage.count", _postProcessingStages.Count);
+        activity?.SetTag("input.length", text.Length);
+
         var context = new PostProcessingContext
         {
             RawTranscript = text,
@@ -275,6 +352,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
             }
         }
 
+        activity?.SetTag("output.length", current.Length);
         return current;
     }
 

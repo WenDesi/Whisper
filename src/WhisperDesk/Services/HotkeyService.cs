@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.IO;
 using H.Hooks;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Models;
 using Microsoft.Extensions.Logging;
 using HKey = H.Hooks.Key;
@@ -27,6 +29,11 @@ public class HotkeyService : IDisposable
 
     public void Start()
     {
+        using var activity = DiagnosticSources.UI.StartActivity("HotkeyService.Start");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+        activity?.SetTag("hotkey.push_to_talk", _settings.PushToTalk);
+        activity?.SetTag("hotkey.paste", _settings.PasteTranscription);
+
         _keyboardHook = new LowLevelKeyboardHook
         {
             HandleModifierKeys = true
@@ -41,6 +48,9 @@ public class HotkeyService : IDisposable
 
     private void OnKeyDown(object? sender, KeyboardEventArgs e)
     {
+        using var activity = DiagnosticSources.UI.StartActivity("HotkeyService.OnKeyDown");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+
         foreach (var key in e.Keys.Values)
         {
             _pressedKeys.Add(key);
@@ -51,6 +61,7 @@ public class HotkeyService : IDisposable
         {
             _pushToTalkActive = true;
             _logger.LogDebug("Push-to-talk activated");
+            activity?.SetTag("action", "push_to_talk_pressed");
             PushToTalkPressed?.Invoke(this, EventArgs.Empty);
         }
 
@@ -58,12 +69,16 @@ public class HotkeyService : IDisposable
         if (IsHotkeyPressed(_settings.PasteTranscription))
         {
             _logger.LogDebug("Paste hotkey activated");
+            activity?.SetTag("action", "paste_pressed");
             PasteHotkeyPressed?.Invoke(this, EventArgs.Empty);
         }
     }
 
     private void OnKeyUp(object? sender, KeyboardEventArgs e)
     {
+        using var activity = DiagnosticSources.UI.StartActivity("HotkeyService.OnKeyUp");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+
         foreach (var key in e.Keys.Values)
         {
             _pressedKeys.Remove(key);
@@ -74,6 +89,7 @@ public class HotkeyService : IDisposable
         {
             _pushToTalkActive = false;
             _logger.LogDebug("Push-to-talk released");
+            activity?.SetTag("action", "push_to_talk_released");
             PushToTalkReleased?.Invoke(this, EventArgs.Empty);
         }
     }

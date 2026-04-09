@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 
 namespace WhisperDesk.Core.Services;
@@ -25,29 +27,46 @@ public class TranscriptionLogService
 
     public async Task LogTranscriptionAsync(PipelineResult result)
     {
-        await _writeLock.WaitAsync();
+        using var activity = DiagnosticSources.Pipeline.StartActivity("TranscriptionLog.LogTranscription");
+        activity?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+
+        using (var lockStep = DiagnosticSources.Pipeline.StartActivity("TranscriptionLog.LogTranscription.WaitLock"))
+        {
+            lockStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+            await _writeLock.WaitAsync();
+        }
+
         try
         {
-            var logEntry = $"""
-                === [{result.Timestamp:yyyy-MM-dd HH:mm:ss}] ===
-                Duration: {result.AudioDuration:mm\:ss}
-                Source: {result.SourceFile ?? "microphone"}
-                Language: {result.Language}
+            using (var writeStep = DiagnosticSources.Pipeline.StartActivity("TranscriptionLog.LogTranscription.FileWrite"))
+            {
+                writeStep?.SetTag("thread.id", Environment.CurrentManagedThreadId);
+                writeStep?.SetTag("log.file", _logFilePath);
 
-                --- Raw ---
-                {result.RawTranscript}
+                var logEntry = $"""
+                    === [{result.Timestamp:yyyy-MM-dd HH:mm:ss}] ===
+                    Duration: {result.AudioDuration:mm\:ss}
+                    Source: {result.SourceFile ?? "microphone"}
+                    Language: {result.Language}
 
-                --- Processed ---
-                {result.ProcessedText}
+                    --- Raw ---
+                    {result.RawTranscript}
 
-                """;
+                    --- Processed ---
+                    {result.ProcessedText}
 
-            await File.AppendAllTextAsync(_logFilePath, logEntry);
-            _logger.LogDebug("Transcription logged to {LogFile}", _logFilePath);
+                    """;
+
+                await File.AppendAllTextAsync(_logFilePath, logEntry);
+                _logger.LogDebug("Transcription logged to {LogFile}", _logFilePath);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to write transcription log");
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("exception.type", ex.GetType().FullName);
+            activity?.AddTag("exception.message", ex.Message);
         }
         finally
         {
