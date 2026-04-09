@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 
 namespace WhisperDesk.Core.Providers.Stt.Volcengine;
@@ -57,6 +58,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
         _config = config;
     }
 
+    [Trace]
     public async Task StartSessionAsync(SttSessionOptions options, CancellationToken ct = default)
     {
         _logger.LogInformation("[Volcengine] Starting session...");
@@ -110,6 +112,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
     }
 
+    [Trace]
     public void SignalEndOfAudio()
     {
         _logger.LogInformation("[Volcengine] End of audio signaled.");
@@ -118,6 +121,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
         _audioChannel?.Writer.TryComplete();
     }
 
+    [Trace]
     public async Task<string> EndSessionAsync()
     {
         _logger.LogInformation("[Volcengine] Ending session...");
@@ -125,7 +129,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
         // Wait for the session to complete (server sends is_last_package=true)
         if (_sessionCompleteTcs != null)
         {
-            await Task.WhenAny(_sessionCompleteTcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+            var completedTask = await Task.WhenAny(_sessionCompleteTcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
         }
 
         // Cancel background loops
@@ -260,6 +264,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     #region Session Messages
 
+    [Trace]
     private async Task SendFullClientRequestAsync(SttSessionOptions options)
     {
         var requestPayload = new VolcengineRequest
@@ -318,10 +323,12 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     #region Background Loops
 
+    [Trace]
     private async Task SendLoopAsync(CancellationToken ct)
     {
         try
         {
+            int chunksSent = 0;
             await foreach (var chunk in _audioChannel!.Reader.ReadAllAsync(ct))
             {
                 if (_webSocket?.State != WebSocketState.Open)
@@ -331,6 +338,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
                 }
 
                 await SendAudioFrameAsync(chunk.Data, chunk.IsLast);
+                chunksSent++;
 
                 if (chunk.IsLast)
                 {
@@ -350,12 +358,14 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
     }
 
+    [Trace]
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
         // Server responses can be up to ~64KB; use a pooled buffer
         var buffer = ArrayPool<byte>.Shared.Rent(65536);
         try
         {
+            int messagesReceived = 0;
             while (!ct.IsCancellationRequested && _webSocket?.State == WebSocketState.Open)
             {
                 using var messageStream = new MemoryStream();
@@ -375,6 +385,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
                 var messageBytes = messageStream.ToArray();
                 ProcessServerMessage(messageBytes);
+                messagesReceived++;
             }
         }
         catch (OperationCanceledException)
@@ -406,7 +417,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
             return;
         }
 
-        // Parse header — header_size is in 4-byte units (byte 0 low nibble)
+        // Parse header -- header_size is in 4-byte units (byte 0 low nibble)
         var headerSizeUnits = messageBytes[0] & 0x0F;
         var headerSize = headerSizeUnits * 4; // actual header size in bytes
         var messageType = (byte)((messageBytes[1] >> 4) & 0x0F);
@@ -535,6 +546,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     #region WebSocket Cleanup
 
+    [Trace]
     private async Task CloseWebSocketAsync()
     {
         if (_webSocket is { State: WebSocketState.Open or WebSocketState.CloseReceived })

@@ -3,6 +3,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Services;
@@ -90,6 +91,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _hotkeyService.Start();
     }
 
+    [Trace]
     private void OnPipelineStateChanged(object? sender, PipelineState pipelineState)
     {
         Application.Current?.Dispatcher.Invoke(() =>
@@ -102,6 +104,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
+    [Trace]
     private void OnSessionCompleted(object? sender, PipelineResult result)
     {
         Application.Current?.Dispatcher.Invoke(() =>
@@ -123,6 +126,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _ = _logService.LogTranscriptionAsync(result);
     }
 
+    [Trace]
     private void OnPipelineError(object? sender, PipelineError error)
     {
         Application.Current?.Dispatcher.Invoke(() =>
@@ -133,6 +137,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
+    [Trace]
     private void OnPartialTranscript(object? sender, string partialText)
     {
         Application.Current?.Dispatcher.Invoke(() =>
@@ -141,6 +146,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
+    [Trace]
     private void OnPushToTalkPressed(object? sender, EventArgs e)
     {
         Application.Current?.Dispatcher.Invoke(() =>
@@ -155,6 +161,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
+    [Trace]
     private async void OnPushToTalkReleased(object? sender, EventArgs e)
     {
         await Application.Current!.Dispatcher.InvokeAsync(async () =>
@@ -174,6 +181,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    [Trace]
     [RelayCommand]
     private void ToggleRecording()
     {
@@ -190,6 +198,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    [Trace]
     [RelayCommand]
     private void CopyToClipboard()
     {
@@ -199,6 +208,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    [Trace]
     [RelayCommand]
     private async Task OpenEvalDialog()
     {

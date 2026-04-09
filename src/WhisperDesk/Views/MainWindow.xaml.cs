@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.ViewModels;
 
 namespace WhisperDesk.Views;
@@ -11,6 +12,7 @@ public partial class MainWindow : Window
     public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
+
         DataContext = viewModel;
 
         // Set window icon explicitly so taskbar shows it even when run via dotnet run
@@ -43,6 +45,7 @@ public partial class MainWindow : Window
         Hide();
     }
 
+    [Trace]
     public void ShowFromTray()
     {
         Show();
@@ -50,6 +53,7 @@ public partial class MainWindow : Window
         Activate();
     }
 
+    [Trace]
     public void ForceClose()
     {
         // Called from tray exit

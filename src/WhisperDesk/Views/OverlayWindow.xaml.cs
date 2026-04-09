@@ -6,6 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using PixelFormat = System.Drawing.Imaging.PixelFormat;
@@ -120,6 +121,7 @@ public partial class OverlayWindow : Window
     /// Call once at startup to make the window permanently visible (but transparent).
     /// Positions at top-center of screen.
     /// </summary>
+    [Trace]
     public void Initialize()
     {
         var helper = new WindowInteropHelper(this);
@@ -136,6 +138,7 @@ public partial class OverlayWindow : Window
         _pasteService = pasteService;
     }
 
+    [Trace]
     public void ShowForStatus(AppStatus status, string? errorMessage = null)
     {
         Dispatcher.Invoke(() =>
@@ -172,7 +175,7 @@ public partial class OverlayWindow : Window
                 ApplyAdaptiveBorder();
             }
 
-            // Fade in via opacity — window is always "shown", no Show() call
+            // Fade in via opacity -- window is always "shown", no Show() call
             if (RootContainer.Opacity < 0.1)
             {
                 var fadeIn = (Storyboard)FindResource("FadeIn");
@@ -227,6 +230,7 @@ public partial class OverlayWindow : Window
         spinner.Begin(this, true);
     }
 
+    [Trace]
     private void ShowDone()
     {
         StopActiveAnimations();
@@ -243,7 +247,11 @@ public partial class OverlayWindow : Window
         Task.Run(async () =>
         {
             await Task.Delay(150);
-            Dispatcher.Invoke(() => _pasteService?.PasteToActiveWindow());
+
+            Dispatcher.Invoke(() =>
+            {
+                _pasteService?.PasteToActiveWindow();
+            });
         });
 
         // Auto-hide after 2 seconds
@@ -268,6 +276,7 @@ public partial class OverlayWindow : Window
         _autoHideTimer.Start();
     }
 
+    [Trace]
     public void HideOverlay()
     {
         Dispatcher.Invoke(() =>
@@ -390,6 +399,7 @@ public partial class OverlayWindow : Window
         }
     }
 
+    [Trace]
     private void PositionOnCurrentScreen()
     {
         if (!GetCursorPos(out var cursorPt)) return;
@@ -432,6 +442,7 @@ public partial class OverlayWindow : Window
     /// <summary>
     /// Sample the screen behind the overlay position and set the border to the inverse color.
     /// </summary>
+    [Trace]
     private void ApplyAdaptiveBorder()
     {
         try

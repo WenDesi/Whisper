@@ -1,5 +1,6 @@
 using System.IO;
 using H.Hooks;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Models;
 using Microsoft.Extensions.Logging;
 using HKey = H.Hooks.Key;
@@ -25,6 +26,7 @@ public class HotkeyService : IDisposable
         _settings = settings;
     }
 
+    [Trace]
     public void Start()
     {
         _keyboardHook = new LowLevelKeyboardHook
@@ -39,6 +41,7 @@ public class HotkeyService : IDisposable
             _settings.PushToTalk, _settings.PasteTranscription);
     }
 
+    [Trace]
     private void OnKeyDown(object? sender, KeyboardEventArgs e)
     {
         foreach (var key in e.Keys.Values)
@@ -62,6 +65,7 @@ public class HotkeyService : IDisposable
         }
     }
 
+    [Trace]
     private void OnKeyUp(object? sender, KeyboardEventArgs e)
     {
         foreach (var key in e.Keys.Values)

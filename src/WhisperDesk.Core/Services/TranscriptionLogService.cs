@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 
 namespace WhisperDesk.Core.Services;
@@ -23,9 +24,11 @@ public class TranscriptionLogService
         _logFilePath = Path.Combine(appDataDir, logFileName);
     }
 
+    [Trace]
     public async Task LogTranscriptionAsync(PipelineResult result)
     {
         await _writeLock.WaitAsync();
+
         try
         {
             var logEntry = $"""

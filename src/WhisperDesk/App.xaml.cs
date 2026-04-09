@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Models;
@@ -24,6 +25,7 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
 
+    [Trace]
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -37,7 +39,7 @@ public partial class App : Application
         _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
         _mainWindow.Show();
 
-        // Create overlay window — always visible but transparent until needed
+        // Create overlay window -- always visible but transparent until needed
         // No Show/Hide toggling = no focus stealing
         _overlayWindow = new OverlayWindow();
         _overlayWindow.Initialize();
@@ -75,6 +77,7 @@ public partial class App : Application
         };
     }
 
+    [Trace]
     private void ConfigureServices(IServiceCollection services)
     {
         // Configuration
@@ -106,6 +109,11 @@ public partial class App : Application
             builder.AddProvider(new FileLoggerProvider(logFilePath));
             builder.SetMinimumLevel(LogLevel.Debug);
         });
+
+        // Initialize trace logger for [Trace] Metalama aspect
+        var traceLoggerFactory = services.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
+        MethodTimeLogger.Initialize(
+            traceLoggerFactory.CreateLogger("Trace"));
 
         // Map old settings to Core config objects
         var pipelineConfig = new PipelineConfig
@@ -147,6 +155,7 @@ public partial class App : Application
         _ => AppStatus.Idle
     };
 
+    [Trace]
     private void SetupTrayIcon()
     {
         _trayIcon = new TaskbarIcon
@@ -178,6 +187,7 @@ public partial class App : Application
         _trayIcon.TrayMouseDoubleClick += (_, _) => _mainWindow?.ShowFromTray();
     }
 
+    [Trace]
     private void ExitApplication()
     {
         _trayIcon?.Dispose();

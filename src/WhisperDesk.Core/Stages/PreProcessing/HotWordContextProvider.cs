@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Pipeline;
 
 namespace WhisperDesk.Core.Stages.PreProcessing;
@@ -26,6 +27,7 @@ public class HotWordContextProvider : IContextProvider
         _hotWordsFilePath = Path.Combine(exeDir, config.HotWordsFile);
     }
 
+    [Trace]
     public async Task ContributeAsync(SessionContextBuilder builder, CancellationToken ct = default)
     {
         if (!File.Exists(_hotWordsFilePath))

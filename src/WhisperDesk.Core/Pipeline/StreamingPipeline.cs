@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Providers.Stt;
 
@@ -62,6 +63,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
     }
 
+    [Trace]
     public async Task StartSessionAsync(CancellationToken ct = default)
     {
         if (!await _sessionLock.WaitAsync(0, ct))
@@ -138,6 +140,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         }
     }
 
+    [Trace]
     public async Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default)
     {
         if (State != PipelineState.Listening)
@@ -209,6 +212,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         }
     }
 
+    [Trace]
     public async Task AbortSessionAsync()
     {
         _logger.LogInformation("[Pipeline] Aborting session...");
@@ -232,6 +236,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     public byte[]? GetRecordingAsWav() => _audioRouter.GetRecordingAsWav();
 
+    [Trace]
     private async Task PrepareContextAsync(SessionContextBuilder builder, CancellationToken ct)
     {
         var tasks = _contextProviders.Select(async provider =>
@@ -250,6 +255,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         await Task.WhenAll(tasks);
     }
 
+    [Trace]
     private async Task<string> RunPostProcessingAsync(string text, CancellationToken ct)
     {
         var context = new PostProcessingContext
@@ -271,7 +277,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[Pipeline] Post-processing stage '{Name}' failed.", stage.Name);
-                // Continue with current text — don't fail the whole pipeline
+                // Continue with current text -- don't fail the whole pipeline
             }
         }
 
@@ -285,7 +291,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     private void OnSttError(object? sender, SttError error)
     {
-        _logger.LogError("[Pipeline] STT error: {Code} — {Message}", error.Code, error.Message);
+        _logger.LogError("[Pipeline] STT error: {Code} -- {Message}", error.Code, error.Message);
         ErrorOccurred?.Invoke(this, new PipelineError
         {
             Stage = "STT",

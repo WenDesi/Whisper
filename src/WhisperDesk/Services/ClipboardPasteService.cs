@@ -1,6 +1,6 @@
-using System.Windows;
 using System.Windows.Forms;
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Core.Diagnostics;
 
 namespace WhisperDesk.Services;
 
@@ -16,6 +16,7 @@ public class ClipboardPasteService
         _logger = logger;
     }
 
+    [Trace]
     public void PasteToActiveWindow()
     {
         try

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using NAudio.Wave;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 
 namespace WhisperDesk.Core.Pipeline;
@@ -29,6 +30,9 @@ public class AudioRouter : IDisposable
     // Store the audio format from Start() for WAV header generation
     private AudioFormat _currentFormat = AudioFormat.Default;
 
+    // Chunk counter for sampled tracing on OnDataAvailable
+    private int _chunkCount;
+
     public AudioRouter(ILogger<AudioRouter> logger, IEnumerable<IAudioInterceptor> interceptors)
     {
         _logger = logger;
@@ -38,10 +42,12 @@ public class AudioRouter : IDisposable
     /// <summary>
     /// Start microphone capture. Audio is buffered until SetSink is called.
     /// </summary>
+    [Trace]
     public void Start(AudioFormat format)
     {
         _sinkReady = false;
         _currentFormat = format;
+        _chunkCount = 0;
 
         lock (_recordingLock)
         {
@@ -66,6 +72,7 @@ public class AudioRouter : IDisposable
     /// Set the audio sink (typically the STT provider's PushAudio method).
     /// Flushes any pre-buffered audio immediately.
     /// </summary>
+    [Trace]
     public void SetSink(Action<ReadOnlyMemory<byte>> sink)
     {
         _audioSink = sink;
@@ -74,6 +81,7 @@ public class AudioRouter : IDisposable
     }
 
     /// <summary>Stop microphone capture.</summary>
+    [Trace]
     public void Stop()
     {
         if (_waveIn != null)
@@ -86,6 +94,7 @@ public class AudioRouter : IDisposable
 
         _sinkReady = false;
         _audioSink = null;
+
         _logger.LogInformation("[AudioRouter] Mic capture stopped.");
     }
 
@@ -102,6 +111,7 @@ public class AudioRouter : IDisposable
     }
 
     /// <summary>Get captured audio as a WAV byte array. Returns null if no data.</summary>
+    [Trace]
     public byte[]? GetRecordingAsWav()
     {
         byte[] pcmData;
@@ -154,6 +164,8 @@ public class AudioRouter : IDisposable
     {
         if (e.BytesRecorded == 0) return;
 
+        _chunkCount++;
+
         var chunk = new byte[e.BytesRecorded];
         Buffer.BlockCopy(e.Buffer, 0, chunk, 0, e.BytesRecorded);
 
@@ -180,6 +192,7 @@ public class AudioRouter : IDisposable
         }
     }
 
+    [Trace]
     private void FlushPreBuffer()
     {
         int flushed = 0;
@@ -188,6 +201,7 @@ public class AudioRouter : IDisposable
             _audioSink?.Invoke(chunk);
             flushed++;
         }
+
         if (flushed > 0)
         {
             _logger.LogInformation("[AudioRouter] Flushed {Count} pre-buffered chunks to sink.", flushed);

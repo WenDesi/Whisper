@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
+using WhisperDesk.Core.Diagnostics;
 
 namespace WhisperDesk.Core.Providers.Llm.AzureOpenAI;
 
@@ -22,6 +23,7 @@ public class AzureOpenAILlmProvider : ILlmProvider
         _config = config;
     }
 
+    [Trace]
     public async Task<string> ProcessTextAsync(
         string systemPrompt,
         string userText,
@@ -57,6 +59,7 @@ public class AzureOpenAILlmProvider : ILlmProvider
         return result;
     }
 
+    [Trace]
     public async IAsyncEnumerable<string> ProcessTextStreamingAsync(
         string systemPrompt,
         string userText,
@@ -79,12 +82,14 @@ public class AzureOpenAILlmProvider : ILlmProvider
             chatOptions.Temperature = temp;
         }
 
+        int chunkCount = 0;
         await foreach (var update in chatClient.CompleteChatStreamingAsync(messages, chatOptions, ct))
         {
             foreach (var part in update.ContentUpdate)
             {
                 if (!string.IsNullOrEmpty(part.Text))
                 {
+                    chunkCount++;
                     yield return part.Text;
                 }
             }

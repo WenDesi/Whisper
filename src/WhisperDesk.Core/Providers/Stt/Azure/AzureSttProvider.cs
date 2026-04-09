@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Core.Diagnostics;
 using WhisperDesk.Core.Models;
 
 namespace WhisperDesk.Core.Providers.Stt.Azure;
@@ -37,6 +38,7 @@ public class AzureSttProvider : IStreamingSttProvider
         _config = config;
     }
 
+    [Trace]
     public async Task StartSessionAsync(SttSessionOptions options, CancellationToken ct = default)
     {
         _logger.LogInformation("[AzureStt] Starting session...");
@@ -120,6 +122,7 @@ public class AzureSttProvider : IStreamingSttProvider
         _ctRegistration = ct.Register(() => _sessionTcs?.TrySetCanceled());
 
         await _recognizer.StartContinuousRecognitionAsync();
+
         _logger.LogInformation("[AzureStt] Session started. Ready for audio.");
     }
 
@@ -128,12 +131,14 @@ public class AzureSttProvider : IStreamingSttProvider
         _pushStream?.Write(audioData.ToArray());
     }
 
+    [Trace]
     public void SignalEndOfAudio()
     {
         _pushStream?.Close();
         _logger.LogInformation("[AzureStt] End of audio signaled.");
     }
 
+    [Trace]
     public async Task<string> EndSessionAsync()
     {
         _logger.LogInformation("[AzureStt] Ending session...");
@@ -148,7 +153,7 @@ public class AzureSttProvider : IStreamingSttProvider
 
             if (_sessionTcs != null)
             {
-                await Task.WhenAny(_sessionTcs.Task, Task.Delay(3000));
+                var completedTask = await Task.WhenAny(_sessionTcs.Task, Task.Delay(3000));
             }
 
             _recognizer.Dispose();
