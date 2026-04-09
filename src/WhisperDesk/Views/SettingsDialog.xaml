@@ -1,0 +1,117 @@
+<UserControl x:Class="WhisperDesk.Views.SettingsDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:local="clr-namespace:WhisperDesk.Views"
+             MinWidth="500" MaxWidth="640"
+             Margin="16">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <local:VolumeToWidthConverter x:Key="VolumeToWidthConverter" />
+    </UserControl.Resources>
+
+    <StackPanel>
+        <!-- Header -->
+        <DockPanel Margin="0,0,0,16">
+            <materialDesign:PackIcon Kind="Cog"
+                                     Width="28" Height="28"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,12,0"
+                                     Foreground="{DynamicResource PrimaryHueMidBrush}" />
+            <StackPanel>
+                <TextBlock Text="Settings"
+                           Style="{StaticResource MaterialDesignHeadline6TextBlock}" />
+                <TextBlock Text="Configure microphone and audio devices"
+                           Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                           Opacity="0.6" />
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Microphone Section -->
+        <TextBlock Text="Microphone"
+                   Style="{StaticResource MaterialDesignSubtitle1TextBlock}"
+                   Foreground="{DynamicResource PrimaryHueMidBrush}"
+                   Margin="0,0,0,8" />
+
+        <TextBlock Text="Select a microphone. Volume bars show real-time input levels."
+                   Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                   Opacity="0.5"
+                   Margin="0,0,0,12" />
+
+        <!-- Device List -->
+        <ItemsControl ItemsSource="{Binding Devices}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <materialDesign:Card UniformCornerRadius="8"
+                                         Padding="12,10"
+                                         Margin="0,0,0,6">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="120" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Radio button for selection -->
+                            <RadioButton Grid.Column="0"
+                                         IsChecked="{Binding IsSelected}"
+                                         GroupName="MicrophoneSelection"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,12,0" />
+
+                            <!-- Device name -->
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding DisplayName}"
+                                       Style="{StaticResource MaterialDesignBody2TextBlock}"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+
+                            <!-- Volume meter bar -->
+                            <Grid Grid.Column="2"
+                                  Height="8"
+                                  VerticalAlignment="Center"
+                                  Margin="12,0,0,0">
+                                <!-- Background track -->
+                                <Border Background="#E0E0E0" CornerRadius="4" />
+                                <!-- Filled portion, width bound to Volume (0-100%) -->
+                                <Border Background="#4CAF50" CornerRadius="4"
+                                        HorizontalAlignment="Left">
+                                    <Border.Width>
+                                        <MultiBinding Converter="{StaticResource VolumeToWidthConverter}">
+                                            <Binding Path="Volume" />
+                                            <Binding Path="ActualWidth"
+                                                     RelativeSource="{RelativeSource AncestorType=Grid}" />
+                                        </MultiBinding>
+                                    </Border.Width>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </materialDesign:Card>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- No devices warning -->
+        <TextBlock Text="No microphones detected."
+                   Style="{StaticResource MaterialDesignBody2TextBlock}"
+                   Opacity="0.5"
+                   Margin="0,8,0,0"
+                   Visibility="{Binding NoDevicesFound, Converter={StaticResource BoolToVis}}" />
+
+        <!-- Buttons -->
+        <DockPanel Margin="0,20,0,0">
+            <Button DockPanel.Dock="Right"
+                    Style="{StaticResource MaterialDesignFlatButton}"
+                    Content="CANCEL"
+                    Command="{x:Static materialDesign:DialogHost.CloseDialogCommand}"
+                    CommandParameter="false"
+                    Margin="8,0,0,0" />
+            <Button DockPanel.Dock="Right"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    Content="APPLY"
+                    Command="{Binding ApplyCommand}" />
+            <StackPanel /> <!-- Spacer -->
+        </DockPanel>
+    </StackPanel>
+</UserControl>

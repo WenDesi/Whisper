@@ -114,6 +114,7 @@ public partial class App : Application
             LlmProvider = settings.Transcription.CleanupProvider,
             Language = settings.Transcription.Language,
             EnableTextCleanup = true,
+            AudioDeviceId = settings.Audio.DeviceId,
             Audio = new AudioFormatConfig
             {
                 SampleRate = settings.Audio.SampleRate,

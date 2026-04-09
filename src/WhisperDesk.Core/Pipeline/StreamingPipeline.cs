@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Providers.Stt;
+using WhisperDesk.Core.Services;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -20,6 +21,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IStreamingSttProvider _sttProvider;
     private readonly IEnumerable<IContextProvider> _contextProviders;
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
+    private readonly AudioDeviceService _audioDeviceService;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
@@ -51,6 +53,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         PipelineConfig config,
         AudioRouter audioRouter,
         IStreamingSttProvider sttProvider,
+        AudioDeviceService audioDeviceService,
         IEnumerable<IContextProvider> contextProviders,
         IEnumerable<IPostProcessingStage> postProcessingStages)
     {
@@ -58,6 +61,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _config = config;
         _audioRouter = audioRouter;
         _sttProvider = sttProvider;
+        _audioDeviceService = audioDeviceService;
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
     }
@@ -91,7 +95,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 };
 
                 // 1. Start mic capture IMMEDIATELY (buffered)
-                _audioRouter.Start(audioFormat);
+                var deviceNumber = _audioDeviceService.ResolveWaveInDeviceNumber(_config.AudioDeviceId);
+                _audioRouter.Start(audioFormat, deviceNumber);
 
                 // 2. Prepare context + start STT in parallel
                 _contextBuilder = new SessionContextBuilder();

@@ -38,7 +38,9 @@ public class AudioRouter : IDisposable
     /// <summary>
     /// Start microphone capture. Audio is buffered until SetSink is called.
     /// </summary>
-    public void Start(AudioFormat format)
+    /// <param name="format">Audio format for capture.</param>
+    /// <param name="deviceNumber">WaveIn device number (0 = system default).</param>
+    public void Start(AudioFormat format, int deviceNumber = 0)
     {
         _sinkReady = false;
         _currentFormat = format;
@@ -51,6 +53,7 @@ public class AudioRouter : IDisposable
 
         _waveIn = new WaveInEvent
         {
+            DeviceNumber = deviceNumber,
             WaveFormat = new WaveFormat(format.SampleRate, format.BitsPerSample, format.Channels),
             BufferMilliseconds = 50
         };

@@ -25,6 +25,9 @@ public static class PipelineServiceRegistration
     {
         services.AddSingleton(pipelineConfig);
 
+        // Audio device enumeration + level metering
+        services.AddSingleton<AudioDeviceService>();
+
         // Audio routing
         services.AddSingleton<AudioRouter>();
 
