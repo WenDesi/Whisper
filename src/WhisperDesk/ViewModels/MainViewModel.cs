@@ -1,8 +1,11 @@
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
+using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Services;
@@ -21,6 +24,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ClipboardPasteService _pasteService;
     private readonly TranscriptionLogService _logService;
     private readonly RecordingSettings _recordingSettings;
+    private readonly AudioDeviceService _audioDeviceService;
+    private readonly PipelineConfig _pipelineConfig;
+    private readonly WhisperDeskSettings _appSettings;
     private readonly ILoggerFactory _loggerFactory;
     private CancellationTokenSource? _cts;
     private bool _isStopping;
@@ -65,7 +71,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         HotkeyService hotkeyService,
         ClipboardPasteService pasteService,
         TranscriptionLogService logService,
-        RecordingSettings recordingSettings)
+        RecordingSettings recordingSettings,
+        AudioDeviceService audioDeviceService,
+        PipelineConfig pipelineConfig,
+        WhisperDeskSettings appSettings)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -74,6 +83,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pasteService = pasteService;
         _logService = logService;
         _recordingSettings = recordingSettings;
+        _audioDeviceService = audioDeviceService;
+        _pipelineConfig = pipelineConfig;
+        _appSettings = appSettings;
 
         IsSaveRecordingVisible = !string.IsNullOrWhiteSpace(_recordingSettings.SavePath);
 
@@ -292,6 +304,81 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _logger.LogError(ex, "[ViewModel] Failed to open eval dialog");
             LastError = $"Failed to open eval dialog: {ex.Message}";
             HasError = true;
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenSettings()
+    {
+        try
+        {
+            var settingsVm = new SettingsViewModel(_audioDeviceService, _pipelineConfig.AudioDeviceId);
+            var settingsDialog = new SettingsDialog { DataContext = settingsVm };
+
+            try
+            {
+                await DialogHost.Show(settingsDialog, "RootDialog");
+
+                if (settingsVm.Applied && settingsVm.SelectedDeviceId != null)
+                {
+                    var newDeviceId = settingsVm.SelectedDeviceId;
+                    _logger.LogInformation("[ViewModel] Settings applied. Device: {DeviceId}", newDeviceId);
+
+                    // Update in-memory config so next recording session uses the new device
+                    _pipelineConfig.AudioDeviceId = newDeviceId;
+                    _appSettings.Audio.DeviceId = newDeviceId;
+
+                    // Persist to appsettings.json
+                    SaveDeviceIdToSettings(newDeviceId);
+                }
+            }
+            finally
+            {
+                settingsVm.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[ViewModel] Failed to open settings dialog");
+            LastError = $"Failed to open settings: {ex.Message}";
+            HasError = true;
+        }
+    }
+
+    private void SaveDeviceIdToSettings(string deviceId)
+    {
+        try
+        {
+            var exeDir = Path.GetDirectoryName(Environment.ProcessPath
+                ?? System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!;
+            var settingsPath = Path.Combine(exeDir, "appsettings.json");
+
+            if (!File.Exists(settingsPath))
+            {
+                _logger.LogWarning("[ViewModel] appsettings.json not found at {Path}", settingsPath);
+                return;
+            }
+
+            var json = File.ReadAllText(settingsPath);
+            var doc = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })
+                      ?? new JsonObject();
+
+            // Ensure Audio section exists
+            if (doc["Audio"] is not JsonObject audioNode)
+            {
+                audioNode = new JsonObject();
+                doc["Audio"] = audioNode;
+            }
+            audioNode["DeviceId"] = deviceId;
+
+            var writeOptions = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(settingsPath, doc.ToJsonString(writeOptions));
+
+            _logger.LogInformation("[ViewModel] Saved DeviceId to appsettings.json");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[ViewModel] Failed to save settings to appsettings.json");
         }
     }
 

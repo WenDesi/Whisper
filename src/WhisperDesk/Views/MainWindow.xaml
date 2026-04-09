@@ -42,6 +42,14 @@
                                              Width="28" Height="28"
                                              VerticalAlignment="Center"
                                              Margin="0,0,12,0" />
+                    <!-- Settings button (right-aligned) -->
+                    <Button DockPanel.Dock="Right"
+                            Style="{StaticResource MaterialDesignIconForegroundButton}"
+                            ToolTip="Settings"
+                            Command="{Binding OpenSettingsCommand}"
+                            VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="Cog" Width="22" Height="22" />
+                    </Button>
                     <StackPanel>
                         <TextBlock Text="WhisperDesk"
                                    Style="{StaticResource MaterialDesignHeadline6TextBlock}" />

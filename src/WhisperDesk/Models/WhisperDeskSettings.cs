@@ -37,6 +37,9 @@ public class AudioSettings
     public int SampleRate { get; set; } = 16000;
     public int Channels { get; set; } = 1;
     public int BitsPerSample { get; set; } = 16;
+
+    /// <summary>WASAPI device ID for microphone selection. Empty string = system default.</summary>
+    public string DeviceId { get; set; } = "";
 }
 
 public class TranscriptionSettings

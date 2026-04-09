@@ -23,6 +23,9 @@ public class PipelineConfig
     /// <summary>Enable LLM text cleanup post-processing.</summary>
     public bool EnableTextCleanup { get; set; } = true;
 
+    /// <summary>WASAPI device ID for microphone selection. Empty string = system default.</summary>
+    public string AudioDeviceId { get; set; } = "";
+
     /// <summary>Audio format settings.</summary>
     public AudioFormatConfig Audio { get; set; } = new();
 }
