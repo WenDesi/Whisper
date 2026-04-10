@@ -124,42 +124,50 @@ public partial class MainViewModel : ObservableObject, IDisposable
             PartialText = string.Empty;
             CanSaveRecording = IsSaveRecordingVisible && _pipeline.HasRecordingData;
 
-            // Write to clipboard with retries, then paste sequentially
+            // Write to clipboard and paste — run off UI thread to avoid blocking animations
             if (!string.IsNullOrEmpty(result.ProcessedText))
             {
-                bool clipboardOk = false;
-                for (int i = 0; i < 5; i++)
+                var textToPaste = result.ProcessedText;
+                _ = Task.Run(async () =>
                 {
-                    try
+                    // Write to clipboard with retries (must be on STA thread)
+                    bool clipboardOk = false;
+                    var staThread = new Thread(() =>
                     {
-                        Clipboard.SetDataObject(result.ProcessedText, true);
-                        clipboardOk = true;
-                        _logger.LogInformation("[ViewModel] Cleaned text copied to clipboard.");
-                        break;
-                    }
-                    catch (System.Runtime.InteropServices.COMException ex)
-                    {
-                        _logger.LogWarning("[ViewModel] Clipboard busy (attempt {Attempt}/5): {Message}", i + 1, ex.Message);
-                        if (i < 4) Thread.Sleep(100);
-                    }
-                }
+                        for (int i = 0; i < 5; i++)
+                        {
+                            try
+                            {
+                                Clipboard.SetDataObject(textToPaste, true);
+                                clipboardOk = true;
+                                _logger.LogInformation("[ViewModel] Cleaned text copied to clipboard.");
+                                break;
+                            }
+                            catch (System.Runtime.InteropServices.COMException ex)
+                            {
+                                _logger.LogWarning("[ViewModel] Clipboard busy (attempt {Attempt}/5): {Message}", i + 1, ex.Message);
+                                if (i < 4) Thread.Sleep(100);
+                            }
+                        }
+                    });
+                    staThread.SetApartmentState(ApartmentState.STA);
+                    staThread.Start();
+                    staThread.Join();
 
-                if (clipboardOk)
-                {
-                    // Paste AFTER clipboard write succeeds — sequential, no race
-                    _ = Task.Run(async () =>
+                    if (clipboardOk)
                     {
-                        await Task.Delay(150); // let clipboard settle + let hotkey keys release
+                        // Wait for RDP clipboard sync before pasting
+                        await Task.Delay(500);
                         Application.Current?.Dispatcher.InvokeAsync(() =>
                         {
                             _pasteService.PasteToActiveWindow();
                         });
-                    });
-                }
-                else
-                {
-                    _logger.LogWarning("[ViewModel] Clipboard unavailable after retries, skipping auto-paste.");
-                }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[ViewModel] Clipboard unavailable after retries, skipping auto-paste.");
+                    }
+                });
             }
         });
 

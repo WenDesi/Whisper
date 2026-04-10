@@ -26,6 +26,32 @@ public partial class MainWindow : Window
         }
     }
 
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+
+        // Intercept WM_SYSCOMMAND SC_KEYMENU at the Win32 message level.
+        // This suppresses menu-bar activation triggered by bare Alt press/release,
+        // which WPF (via ComponentDispatcher) and DefWindowProc can generate even
+        // when the low-level keyboard hook has already marked the Alt keys as handled.
+        var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        source?.AddHook(WndProc);
+    }
+
+    private const int WM_SYSCOMMAND = 0x0112;
+    private const int SC_KEYMENU = 0xF100;
+
+    private static IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        // SC_KEYMENU with lParam==0 is a keyboard-triggered menu activation (bare Alt key).
+        // Masking wParam with 0xFFF0 normalizes the value per the Win32 spec.
+        if (msg == WM_SYSCOMMAND && (wParam.ToInt32() & 0xFFF0) == SC_KEYMENU)
+        {
+            handled = true;
+        }
+        return IntPtr.Zero;
+    }
+
     private void Window_StateChanged(object sender, EventArgs e)
     {
         if (WindowState == WindowState.Minimized)
