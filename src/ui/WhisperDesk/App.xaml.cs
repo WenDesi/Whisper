@@ -173,7 +173,6 @@ public partial class App : Application
 
     private void ExitApplication()
     {
-        _trayIcon?.Dispose();
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();
 
@@ -191,6 +190,9 @@ public partial class App : Application
 
         _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();
+
+        // Remove tray icon last so Windows refreshes immediately before process exits
+        _trayIcon?.Dispose();
 
         Shutdown();
     }
