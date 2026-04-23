@@ -15,6 +15,7 @@
     <TranscriptRoot>$(SrcRoot)transcript\</TranscriptRoot>
     <ServerRoot>$(SrcRoot)server\</ServerRoot>
     <ProtoRoot>$(SrcRoot)proto\</ProtoRoot>
+    <JobsRoot>$(SrcRoot)jobs\</JobsRoot>
   </PropertyGroup>
 
   <PropertyGroup>

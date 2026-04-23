@@ -14,6 +14,9 @@ public class HotWordContextProvider : IContextProvider
     private readonly ILogger<HotWordContextProvider> _logger;
     private readonly string _hotWordsFilePath;
 
+    private List<string>? _cachedWords;
+    private DateTime _cachedLastWriteUtc;
+
     public string Name => "Hot Words";
 
     public HotWordContextProvider(ILogger<HotWordContextProvider> logger, PipelineConfig config)
@@ -36,6 +39,15 @@ public class HotWordContextProvider : IContextProvider
 
         try
         {
+            var lastWrite = File.GetLastWriteTimeUtc(_hotWordsFilePath);
+
+            if (_cachedWords is not null && lastWrite == _cachedLastWriteUtc)
+            {
+                builder.AddPhraseHints(_cachedWords);
+                _logger.LogDebug("[HotWords] Using cached {Count} hot words.", _cachedWords.Count);
+                return;
+            }
+
             var json = await File.ReadAllTextAsync(_hotWordsFilePath, ct);
             var doc = JsonDocument.Parse(json);
 
@@ -46,6 +58,9 @@ public class HotWordContextProvider : IContextProvider
                     .Select(e => e.GetString()!)
                     .Where(s => !string.IsNullOrWhiteSpace(s))
                     .ToList();
+
+                _cachedWords = words;
+                _cachedLastWriteUtc = lastWrite;
 
                 builder.AddPhraseHints(words);
                 _logger.LogInformation("[HotWords] Loaded {Count} hot words from {Path}.", words.Count, _hotWordsFilePath);
