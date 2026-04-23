@@ -54,6 +54,16 @@ internal class VolcengineRequestInfo
 
     [JsonPropertyName("show_utterances")]
     public bool ShowUtterances { get; set; } = true;
+
+    [JsonPropertyName("corpus")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public VolcengineCorpus? Corpus { get; set; }
+}
+
+internal class VolcengineCorpus
+{
+    [JsonPropertyName("context")]
+    public string Context { get; set; } = "";
 }
 
 internal class VolcengineResponse
