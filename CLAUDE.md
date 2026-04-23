@@ -86,7 +86,7 @@ One command, no external dependencies:
 dotnet publish src/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none
 
 # Dev (includes appsettings.Development.json with local keys — do NOT distribute)
-dotnet publish src/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none -p:IncludeDevConfig=true
+dotnet publish src/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none -p:Env=dev
 ```
 
 Output in `publish/`:
