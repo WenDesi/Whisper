@@ -75,5 +75,17 @@ Follow the same pattern. Example for a future LLM module:
 dotnet build                                    # Build all
 dotnet run --project src/ui/WhisperDesk/WhisperDesk.csproj  # Run the app
 dotnet test                                     # Run tests
-dotnet publish -c Release                       # Self-contained single-file publish
 ```
+
+## Publish
+
+One command, no external dependencies:
+
+```bash
+dotnet publish src/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none
+```
+
+Output in `publish/`:
+- `WhisperDesk.exe` — self-contained single-file (~87 MB, bundles .NET runtime)
+- `appsettings.json` — user-editable config (excluded from single-file)
+- `hotwords.json` — phrase hints (excluded from single-file)

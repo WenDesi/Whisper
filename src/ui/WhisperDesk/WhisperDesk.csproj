@@ -12,7 +12,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- ============================================================
+       Publish configuration: self-contained, single-file executable
+       Run: dotnet publish -c Release
+       ============================================================ -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
@@ -51,6 +56,8 @@
     <None Update="appsettings.Development.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <CopyToPublishDirectory Condition="'$(Env)' != 'dev'">Never</CopyToPublishDirectory>
+      <CopyToPublishDirectory Condition="'$(Env)' == 'dev'">PreserveNewest</CopyToPublishDirectory>
     </None>
     <None Update="hotwords.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
