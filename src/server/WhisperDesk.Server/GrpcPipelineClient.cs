@@ -11,6 +11,7 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
     private readonly PipelineService.PipelineServiceClient _client;
     private CancellationTokenSource? _subscribeCts;
     private Task? _subscribeTask;
+    private int _disposed;
 
     public PipelineState State { get; private set; } = PipelineState.Idle;
     public string? LastProcessedText { get; private set; }
@@ -62,15 +63,16 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
 
     private void StartEventSubscription()
     {
-        _subscribeCts = new CancellationTokenSource();
+        var subscribeCts = new CancellationTokenSource();
+        _subscribeCts = subscribeCts;
         _subscribeTask = Task.Run(async () =>
         {
-            while (!_subscribeCts.Token.IsCancellationRequested)
+            while (!subscribeCts.Token.IsCancellationRequested)
             {
                 try
                 {
-                    using var stream = _client.Subscribe(new SubscribeRequest(), cancellationToken: _subscribeCts.Token);
-                    while (await stream.ResponseStream.MoveNext(_subscribeCts.Token))
+                    using var stream = _client.Subscribe(new SubscribeRequest(), cancellationToken: subscribeCts.Token);
+                    while (await stream.ResponseStream.MoveNext(subscribeCts.Token))
                     {
                         ProcessEvent(stream.ResponseStream.Current);
                     }
@@ -78,10 +80,10 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
                 catch (OperationCanceledException) { break; }
                 catch
                 {
-                    await Task.Delay(1000, _subscribeCts.Token);
+                    await Task.Delay(1000, subscribeCts.Token);
                 }
             }
-        }, _subscribeCts.Token);
+        }, subscribeCts.Token);
     }
 
     private void ProcessEvent(PipelineEvent evt)
@@ -133,9 +135,37 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
 
     public void Dispose()
     {
-        _subscribeCts?.Cancel();
-        _subscribeCts?.Dispose();
-        _channel.Dispose();
-        GC.SuppressFinalize(this);
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        var subscribeCts = Interlocked.Exchange(ref _subscribeCts, null);
+        var subscribeTask = Interlocked.Exchange(ref _subscribeTask, null);
+
+        try
+        {
+            subscribeCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        try
+        {
+            subscribeTask?.Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (AggregateException ex) when (ex.InnerExceptions.All(static inner => inner is OperationCanceledException))
+        {
+        }
+        finally
+        {
+            subscribeCts?.Dispose();
+            _channel.Dispose();
+            GC.SuppressFinalize(this);
+        }
     }
 }

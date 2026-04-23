@@ -143,7 +143,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                 if (i < 4) Thread.Sleep(100);
                             }
                         }
-                    });
+                    })
+                    {
+                        IsBackground = true
+                    };
                     staThread.SetApartmentState(ApartmentState.STA);
                     staThread.Start();
                     staThread.Join();
@@ -415,8 +418,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _hotkeyService.PushToTalkReleased -= OnPushToTalkReleased;
         _hotkeyService.PasteHotkeyPressed -= OnPasteHotkeyPressed;
 
-        _hotkeyService.Dispose();
+        _cts?.Cancel();
         _cts?.Dispose();
+        _cts = null;
         GC.SuppressFinalize(this);
     }
 }

@@ -15,13 +15,22 @@ public class WhisperDeskServer : IDisposable
 {
     private readonly WebApplication _app;
     private readonly CancellationTokenSource _shutdownCts;
+    private int _disposed;
 
     public string Address { get; }
 
     public void SignalShutdown()
     {
-        if (!_shutdownCts.IsCancellationRequested)
-            _shutdownCts.Cancel();
+        try
+        {
+            if (!_shutdownCts.IsCancellationRequested)
+            {
+                _shutdownCts.Cancel();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     private WhisperDeskServer(WebApplication app, string address, CancellationTokenSource shutdownCts)
@@ -119,9 +128,26 @@ public class WhisperDeskServer : IDisposable
 
     public void Dispose()
     {
-        Stop();
-        (_app as IDisposable)?.Dispose();
-        _shutdownCts.Dispose();
-        GC.SuppressFinalize(this);
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Stop();
+        }
+        finally
+        {
+            try
+            {
+                (_app as IDisposable)?.Dispose();
+            }
+            finally
+            {
+                _shutdownCts.Dispose();
+                GC.SuppressFinalize(this);
+            }
+        }
     }
 }

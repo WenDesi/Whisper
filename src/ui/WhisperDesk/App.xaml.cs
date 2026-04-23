@@ -27,6 +27,7 @@ public partial class App : Application
     private WhisperDeskServer? _server;
     private GrpcPipelineClient? _grpcClient;
     private Mutex? _singleInstanceMutex;
+    private int _exitRequested;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -175,30 +176,88 @@ public partial class App : Application
 
     private void ExitApplication()
     {
-        _overlayWindow?.Close();
-        _mainWindow?.ForceClose();
-
-        try { (_serviceProvider?.GetService<MainViewModel>() as IDisposable)?.Dispose(); } catch { }
-        try { (_serviceProvider?.GetService<HotkeyService>() as IDisposable)?.Dispose(); } catch { }
-
-        _grpcClient?.Dispose();
-        _server?.SignalShutdown();
-
-        var shutdownThread = new Thread(() =>
+        if (Interlocked.Exchange(ref _exitRequested, 1) != 0)
         {
-            try { _server?.Dispose(); } catch { }
-        });
-        shutdownThread.Start();
-        shutdownThread.Join(TimeSpan.FromSeconds(5));
+            return;
+        }
 
-        try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
+        var trayIcon = _trayIcon;
+        _trayIcon = null;
+        trayIcon?.Dispose();
 
-        _singleInstanceMutex?.ReleaseMutex();
-        _singleInstanceMutex?.Dispose();
+        _overlayWindow?.Close();
+        _overlayWindow = null;
+        _mainWindow?.ForceClose();
+        _mainWindow = null;
 
-        _trayIcon?.Dispose();
+        var serviceProvider = _serviceProvider;
+        _serviceProvider = null;
+        var grpcClient = _grpcClient;
+        _grpcClient = null;
+        var server = _server;
+        _server = null;
+        var singleInstanceMutex = _singleInstanceMutex;
+        _singleInstanceMutex = null;
+
+        try
+        {
+            (serviceProvider as IDisposable)?.Dispose();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            grpcClient?.Dispose();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            server?.SignalShutdown();
+        }
+        catch
+        {
+        }
+
+        if (server != null)
+        {
+            DisposeServerInBackground(server);
+        }
+
+        try
+        {
+            singleInstanceMutex?.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+        }
+
+        singleInstanceMutex?.Dispose();
 
         Shutdown();
+    }
+
+    private static void DisposeServerInBackground(WhisperDeskServer server)
+    {
+        var shutdownThread = new Thread(() =>
+        {
+            try
+            {
+                server.Dispose();
+            }
+            catch
+            {
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "WhisperDeskServerShutdown"
+        };
+        shutdownThread.Start();
     }
 
     protected override void OnExit(ExitEventArgs e)
