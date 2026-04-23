@@ -7,9 +7,7 @@ using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Core.Models;
-using WhisperDesk.Core.Pipeline;
-using WhisperDesk.Core.Services;
+using WhisperDesk.Core.Contract;
 using WhisperDesk.Server;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
@@ -51,7 +49,7 @@ public partial class App : Application
             // 2. Build UI services
             _grpcClient = new GrpcPipelineClient(_server.Address);
             var services = new ServiceCollection();
-            ConfigureUiServices(services, exeDir, _grpcClient);
+            ConfigureUiServices(services, exeDir, _server.Address, _grpcClient);
             _serviceProvider = services.BuildServiceProvider();
 
             SetupTrayIcon();
@@ -100,7 +98,7 @@ public partial class App : Application
         }
     }
 
-    private static void ConfigureUiServices(IServiceCollection services, string exeDir, GrpcPipelineClient grpcClient)
+    private static void ConfigureUiServices(IServiceCollection services, string exeDir, string serverAddress, GrpcPipelineClient grpcClient)
     {
         var config = new ConfigurationBuilder()
             .SetBasePath(exeDir)
@@ -114,7 +112,6 @@ public partial class App : Application
         services.AddSingleton(settings);
         services.AddSingleton(settings.Hotkeys);
         services.AddSingleton(settings.Audio);
-        services.AddSingleton(settings.Recording);
 
         var logFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -127,7 +124,7 @@ public partial class App : Application
         });
 
         services.AddSingleton<IPipelineController>(grpcClient);
-        services.AddSingleton<AudioDeviceService>();
+        services.AddSingleton(new GrpcDeviceClient(serverAddress));
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();
         services.AddSingleton<MainViewModel>();

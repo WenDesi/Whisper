@@ -1,7 +1,6 @@
 using System.Threading.Channels;
 using Grpc.Core;
-using WhisperDesk.Core.Models;
-using WhisperDesk.Core.Pipeline;
+using WhisperDesk.Core.Contract;
 using WhisperDesk.Proto;
 
 namespace WhisperDesk.Server;

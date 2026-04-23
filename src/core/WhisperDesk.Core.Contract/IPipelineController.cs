@@ -1,6 +1,4 @@
-using WhisperDesk.Core.Models;
-
-namespace WhisperDesk.Core.Pipeline;
+namespace WhisperDesk.Core.Contract;
 
 /// <summary>
 /// UI-facing contract for controlling the transcription pipeline.

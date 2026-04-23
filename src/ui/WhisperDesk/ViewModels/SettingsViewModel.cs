@@ -3,7 +3,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
-using WhisperDesk.Core.Services;
+using WhisperDesk.Server;
 
 namespace WhisperDesk.ViewModels;
 
@@ -13,7 +13,7 @@ namespace WhisperDesk.ViewModels;
 /// </summary>
 public partial class SettingsViewModel : ObservableObject, IDisposable
 {
-    private readonly AudioDeviceService _deviceService;
+    private readonly GrpcDeviceClient _deviceClient;
     private readonly DispatcherTimer _volumeTimer;
 
     public ObservableCollection<MicrophoneItem> Devices { get; } = new();
@@ -27,14 +27,14 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     /// <summary>True when Apply was clicked (signals the caller to save).</summary>
     public bool Applied { get; private set; }
 
-    public SettingsViewModel(AudioDeviceService deviceService, string currentDeviceId)
+    public SettingsViewModel(GrpcDeviceClient deviceClient, string currentDeviceId)
     {
-        _deviceService = deviceService;
+        _deviceClient = deviceClient;
 
         LoadDevices(currentDeviceId);
 
         // Start silent capture streams so MasterPeakValue reports live data
-        _deviceService.StartMonitoring();
+        _deviceClient.StartMonitoring();
 
         // Poll volume levels every 50ms while the dialog is open
         _volumeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
@@ -44,7 +44,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     private void LoadDevices(string currentDeviceId)
     {
-        var devices = _deviceService.GetCaptureDevices();
+        var devices = _deviceClient.GetCaptureDevices();
         NoDevicesFound = devices.Count == 0;
 
         foreach (var d in devices)
@@ -73,7 +73,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     {
         foreach (var device in Devices)
         {
-            var peak = _deviceService.GetPeakVolume(device.Id);
+            var peak = _deviceClient.GetPeakVolume(device.Id);
             device.Volume = (int)(peak * 100);
         }
     }
@@ -89,8 +89,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _volumeTimer.Stop();
-        _deviceService.StopMonitoring();
-        _deviceService.ReleaseCachedDevices();
+        _deviceClient.StopMonitoring();
         GC.SuppressFinalize(this);
     }
 }

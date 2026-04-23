@@ -5,10 +5,8 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
-using WhisperDesk.Core.Configuration;
-using WhisperDesk.Core.Pipeline;
-using WhisperDesk.Core.Models;
-using WhisperDesk.Core.Services;
+using WhisperDesk.Core.Contract;
+using WhisperDesk.Server;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.Views;
@@ -22,10 +20,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IPipelineController _pipeline;
     private readonly HotkeyService _hotkeyService;
     private readonly ClipboardPasteService _pasteService;
-    private readonly RecordingSettings _recordingSettings;
-    private readonly AudioDeviceService _audioDeviceService;
+    private readonly GrpcDeviceClient _deviceClient;
     private readonly WhisperDeskSettings _appSettings;
-    private readonly ILoggerFactory _loggerFactory;
     private CancellationTokenSource? _cts;
     private bool _isStopping;
 
@@ -56,32 +52,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasError;
 
-    [ObservableProperty]
-    private bool _canSaveRecording;
-
-    [ObservableProperty]
-    private bool _isSaveRecordingVisible;
-
     public MainViewModel(
         ILogger<MainViewModel> logger,
-        ILoggerFactory loggerFactory,
         IPipelineController pipeline,
         HotkeyService hotkeyService,
         ClipboardPasteService pasteService,
-        RecordingSettings recordingSettings,
-        AudioDeviceService audioDeviceService,
+        GrpcDeviceClient deviceClient,
         WhisperDeskSettings appSettings)
     {
         _logger = logger;
-        _loggerFactory = loggerFactory;
         _pipeline = pipeline;
         _hotkeyService = hotkeyService;
         _pasteService = pasteService;
-        _recordingSettings = recordingSettings;
-        _audioDeviceService = audioDeviceService;
+        _deviceClient = deviceClient;
         _appSettings = appSettings;
-
-        IsSaveRecordingVisible = !string.IsNullOrWhiteSpace(_recordingSettings.SavePath);
 
         // Wire pipeline events
         _pipeline.StateChanged += OnPipelineStateChanged;
@@ -116,7 +100,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             RawText = result.RawTranscript;
             CleanedText = result.ProcessedText;
             PartialText = string.Empty;
-            CanSaveRecording = IsSaveRecordingVisible && _pipeline.HasRecordingData;
 
             // Write to clipboard and paste — run off UI thread to avoid blocking animations
             if (!string.IsNullOrEmpty(result.ProcessedText))
@@ -175,7 +158,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             LastError = error.Message;
             HasError = true;
-            CanSaveRecording = IsSaveRecordingVisible && _pipeline.HasRecordingData;
         });
     }
 
@@ -193,7 +175,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
             {
-                CanSaveRecording = false;
                 PartialText = string.Empty;
                 var (proc, title) = ForegroundWindowInfo.Get();
                 _cts = new CancellationTokenSource();
@@ -253,7 +234,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else
         {
-            CanSaveRecording = false;
             PartialText = string.Empty;
             var (proc, title) = ForegroundWindowInfo.Get();
             _cts = new CancellationTokenSource();
@@ -271,52 +251,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task OpenEvalDialog()
-    {
-        try
-        {
-            var wavData = _pipeline.GetRecordingAsWav();
-            if (wavData == null || wavData.Length == 0)
-            {
-                _logger.LogWarning("[ViewModel] No recording data for eval");
-                return;
-            }
-
-            var savePath = _recordingSettings.SavePath;
-            if (string.IsNullOrWhiteSpace(savePath))
-            {
-                _logger.LogWarning("[ViewModel] Recording save path not configured");
-                return;
-            }
-
-            var evalLogger = _loggerFactory.CreateLogger<EvalDialogViewModel>();
-            var evalVm = new EvalDialogViewModel(evalLogger, wavData, RawText, savePath);
-
-            var evalDialog = new EvalDialog { DataContext = evalVm };
-
-            try
-            {
-                await DialogHost.Show(evalDialog, "RootDialog");
-            }
-            finally
-            {
-                evalVm.Dispose();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[ViewModel] Failed to open eval dialog");
-            LastError = $"Failed to open eval dialog: {ex.Message}";
-            HasError = true;
-        }
-    }
-
-    [RelayCommand]
     private async Task OpenSettings()
     {
         try
         {
-            var settingsVm = new SettingsViewModel(_audioDeviceService, _appSettings.Audio.DeviceId);
+            var settingsVm = new SettingsViewModel(_deviceClient, _appSettings.Audio.DeviceId);
             var settingsDialog = new SettingsDialog { DataContext = settingsVm };
 
             try
@@ -330,7 +269,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                     // Update in-memory config so next recording session uses the new device
                     _appSettings.Audio.DeviceId = newDeviceId;
-                    _appSettings.Audio.DeviceId = newDeviceId;
+                    _deviceClient.SetActiveDevice(newDeviceId);
 
                     // Persist to appsettings.json
                     SaveDeviceIdToSettings(newDeviceId);

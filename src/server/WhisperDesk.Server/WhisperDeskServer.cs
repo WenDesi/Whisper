@@ -76,6 +76,7 @@ public class WhisperDeskServer : IDisposable
 
         var app = builder.Build();
         app.MapGrpcService<PipelineGrpcService>();
+        app.MapGrpcService<DeviceGrpcService>();
 
         app.StartAsync().GetAwaiter().GetResult();
 
@@ -85,7 +86,7 @@ public class WhisperDeskServer : IDisposable
     private static PipelineConfig BuildPipelineConfig(IConfiguration config)
     {
         var sttProvider = config["Transcription:SpeechProvider"] ?? "AzureSpeech";
-        var llmProvider = config["Transcription:CleanupProvider"] ?? "AzureOpenAI";
+        var llmProvider = config["Transcription:CleanupProvider"] ?? "OpenAI";
         var language = config["Transcription:Language"] ?? "zh";
         var deviceId = config["Audio:DeviceId"] ?? "";
 
