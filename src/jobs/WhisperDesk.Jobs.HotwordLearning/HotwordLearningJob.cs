@@ -105,7 +105,8 @@ public sealed class HotwordLearningJob : BackgroundService
     private async Task RunCycleAsync(CancellationToken ct)
     {
         var historyDir = _historyService.GetHistoryDirectory();
-        var marker = ReadMarker();
+        var markerTimestamp = ReadMarkerTimestamp();
+        var contextCutoff = markerTimestamp - ContextWindow;
 
         var allFiles = Directory.GetFiles(historyDir, "*.jsonl")
             .OrderBy(f => f)
@@ -114,24 +115,36 @@ public sealed class HotwordLearningJob : BackgroundService
         if (allFiles.Count == 0)
             return;
 
-        // Read all entries from all files, tracking file + line position
-        var allEntries = new List<(string File, int Line, TranscriptionHistoryEntry Entry)>();
+        var contextEntries = new List<string>();
+        var newEntries = new List<string>();
+        DateTime latestTimestamp = markerTimestamp;
 
         foreach (var file in allFiles)
         {
+            if (File.GetLastWriteTimeUtc(file) < contextCutoff)
+                continue;
+
             try
             {
                 var lines = await File.ReadAllLinesAsync(file, ct);
-                var fileName = Path.GetFileName(file);
-                for (int i = 0; i < lines.Length; i++)
+                foreach (var line in lines)
                 {
-                    if (string.IsNullOrWhiteSpace(lines[i])) continue;
+                    if (string.IsNullOrWhiteSpace(line)) continue;
                     try
                     {
-                        var entry = JsonSerializer.Deserialize<TranscriptionHistoryEntry>(lines[i], CamelCase);
-                        if (entry is not null && !string.IsNullOrWhiteSpace(entry.RawText))
+                        var entry = JsonSerializer.Deserialize<TranscriptionHistoryEntry>(line, CamelCase);
+                        if (entry is null || string.IsNullOrWhiteSpace(entry.RawText))
+                            continue;
+
+                        if (entry.Timestamp > markerTimestamp)
                         {
-                            allEntries.Add((fileName, i, entry));
+                            newEntries.Add(entry.RawText);
+                            if (entry.Timestamp > latestTimestamp)
+                                latestTimestamp = entry.Timestamp;
+                        }
+                        else if (entry.Timestamp >= contextCutoff)
+                        {
+                            contextEntries.Add(entry.RawText);
                         }
                     }
                     catch (JsonException) { }
@@ -143,49 +156,15 @@ public sealed class HotwordLearningJob : BackgroundService
             }
         }
 
-        if (allEntries.Count == 0)
+        if (newEntries.Count == 0)
             return;
 
-        // Find where the marker is in the entries list
-        var markerIndex = -1;
-        if (marker != null)
-        {
-            for (int i = allEntries.Count - 1; i >= 0; i--)
-            {
-                if (allEntries[i].File == marker.File && allEntries[i].Line == marker.Line)
-                {
-                    markerIndex = i;
-                    break;
-                }
-            }
-        }
-
-        // New entries start after the marker
-        var newStartIndex = markerIndex + 1;
-        if (newStartIndex >= allEntries.Count)
-            return;
-
-        // Include context: entries from up to 30s before the first new entry
-        var firstNewTimestamp = allEntries[newStartIndex].Entry.Timestamp;
-        var contextCutoff = firstNewTimestamp - ContextWindow;
-
-        var contextStartIndex = newStartIndex;
-        for (int i = newStartIndex - 1; i >= 0; i--)
-        {
-            if (allEntries[i].Entry.Timestamp >= contextCutoff)
-                contextStartIndex = i;
-            else
-                break;
-        }
-
-        var entriesToAnalyze = allEntries
-            .Skip(contextStartIndex)
+        var entriesToAnalyze = contextEntries.Concat(newEntries)
             .TakeLast(MaxEntriesPerSession)
-            .Select(e => e.Entry.RawText)
             .ToList();
 
-        _logger.LogInformation("[HotwordLearning] Analyzing {Count} transcripts ({New} new + context).",
-            entriesToAnalyze.Count, allEntries.Count - newStartIndex);
+        _logger.LogInformation("[HotwordLearning] Analyzing {Total} transcripts ({New} new + {Context} context).",
+            entriesToAnalyze.Count, newEntries.Count, contextEntries.Count);
 
         var existing = await LoadExistingHotwordsAsync(ct);
         var discoveredWords = await ExtractHotwordsFromSessionAsync(entriesToAnalyze, existing, ct);
@@ -204,9 +183,7 @@ public sealed class HotwordLearningJob : BackgroundService
             }
         }
 
-        // Advance marker to the last entry we processed
-        var last = allEntries[^1];
-        WriteMarker(new ProcessingMarker { File = last.File, Line = last.Line });
+        WriteMarkerTimestamp(latestTimestamp);
     }
 
     private async Task<List<string>> ExtractHotwordsFromSessionAsync(
@@ -279,38 +256,33 @@ public sealed class HotwordLearningJob : BackgroundService
         File.Move(tempPath, _hotWordsFilePath, overwrite: true);
     }
 
-    private ProcessingMarker? ReadMarker()
+    private DateTime ReadMarkerTimestamp()
     {
         if (!File.Exists(_markerFilePath))
-            return null;
+            return DateTime.MinValue;
 
         try
         {
-            var json = File.ReadAllText(_markerFilePath).Trim();
-            return JsonSerializer.Deserialize<ProcessingMarker>(json, CamelCase);
+            var text = File.ReadAllText(_markerFilePath).Trim();
+            return DateTime.TryParse(text, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
+                ? dt
+                : DateTime.MinValue;
         }
         catch
         {
-            return null;
+            return DateTime.MinValue;
         }
     }
 
-    private void WriteMarker(ProcessingMarker marker)
+    private void WriteMarkerTimestamp(DateTime timestamp)
     {
         try
         {
-            var json = JsonSerializer.Serialize(marker, CamelCase);
-            File.WriteAllText(_markerFilePath, json);
+            File.WriteAllText(_markerFilePath, timestamp.ToString("O"));
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[HotwordLearning] Failed to write marker file.");
         }
-    }
-
-    private sealed class ProcessingMarker
-    {
-        public string File { get; set; } = "";
-        public int Line { get; set; }
     }
 }
