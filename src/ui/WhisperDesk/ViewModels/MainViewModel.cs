@@ -22,10 +22,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IPipelineController _pipeline;
     private readonly HotkeyService _hotkeyService;
     private readonly ClipboardPasteService _pasteService;
-    private readonly TranscriptionLogService _logService;
     private readonly RecordingSettings _recordingSettings;
     private readonly AudioDeviceService _audioDeviceService;
-    private readonly PipelineConfig _pipelineConfig;
     private readonly WhisperDeskSettings _appSettings;
     private readonly ILoggerFactory _loggerFactory;
     private CancellationTokenSource? _cts;
@@ -70,10 +68,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IPipelineController pipeline,
         HotkeyService hotkeyService,
         ClipboardPasteService pasteService,
-        TranscriptionLogService logService,
         RecordingSettings recordingSettings,
         AudioDeviceService audioDeviceService,
-        PipelineConfig pipelineConfig,
         WhisperDeskSettings appSettings)
     {
         _logger = logger;
@@ -81,10 +77,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline = pipeline;
         _hotkeyService = hotkeyService;
         _pasteService = pasteService;
-        _logService = logService;
         _recordingSettings = recordingSettings;
         _audioDeviceService = audioDeviceService;
-        _pipelineConfig = pipelineConfig;
         _appSettings = appSettings;
 
         IsSaveRecordingVisible = !string.IsNullOrWhiteSpace(_recordingSettings.SavePath);
@@ -170,9 +164,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 });
             }
         });
-
-        // Log transcription (fire and forget on background)
-        _ = _logService.LogTranscriptionAsync(result);
     }
 
     private void OnPipelineError(object? sender, PipelineError error)
@@ -320,7 +311,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var settingsVm = new SettingsViewModel(_audioDeviceService, _pipelineConfig.AudioDeviceId);
+            var settingsVm = new SettingsViewModel(_audioDeviceService, _appSettings.Audio.DeviceId);
             var settingsDialog = new SettingsDialog { DataContext = settingsVm };
 
             try
@@ -333,7 +324,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     _logger.LogInformation("[ViewModel] Settings applied. Device: {DeviceId}", newDeviceId);
 
                     // Update in-memory config so next recording session uses the new device
-                    _pipelineConfig.AudioDeviceId = newDeviceId;
+                    _appSettings.Audio.DeviceId = newDeviceId;
                     _appSettings.Audio.DeviceId = newDeviceId;
 
                     // Persist to appsettings.json

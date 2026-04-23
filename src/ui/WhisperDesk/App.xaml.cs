@@ -7,11 +7,10 @@ using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Core.Configuration;
-using WhisperDesk.Stt;
-using WhisperDesk.Llm;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
+using WhisperDesk.Core.Services;
+using WhisperDesk.Server;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.ViewModels;
@@ -25,64 +24,72 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
+    private WhisperDeskServer? _server;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        _serviceProvider = services.BuildServiceProvider();
-
-        SetupTrayIcon();
-
-        _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
-        _mainWindow.Show();
-
-        // Create overlay window — always visible but transparent until needed
-        // No Show/Hide toggling = no focus stealing
-        _overlayWindow = new OverlayWindow();
-        _overlayWindow.Initialize();
-        _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
-
-        // Wire tray tooltip + overlay updates via IPipelineController
-        var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
-        pipeline.StateChanged += (_, pipelineState) =>
+        try
         {
-            Dispatcher.InvokeAsync(() =>
+            var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
+
+            // 1. Start backend server (owns Core, STT, LLM, Pipeline, gRPC)
+            _server = WhisperDeskServer.Start(exeDir);
+
+            // 2. Build UI services
+            var services = new ServiceCollection();
+            ConfigureUiServices(services, exeDir, _server.Address);
+            _serviceProvider = services.BuildServiceProvider();
+
+            SetupTrayIcon();
+
+            _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+            _mainWindow.Show();
+
+            _overlayWindow = new OverlayWindow();
+            _overlayWindow.Initialize();
+            _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
+
+            var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
+            pipeline.StateChanged += (_, pipelineState) =>
             {
-                var appStatus = MapToAppStatus(pipelineState);
-                if (_trayIcon != null)
+                Dispatcher.InvokeAsync(() =>
                 {
-                    _trayIcon.ToolTipText = appStatus.ToTrayTooltip();
-                }
+                    var appStatus = MapToAppStatus(pipelineState);
+                    if (_trayIcon != null)
+                    {
+                        _trayIcon.ToolTipText = appStatus.ToTrayTooltip();
+                    }
 
-                if (appStatus == AppStatus.Idle)
-                {
-                    _overlayWindow?.HideOverlay();
-                }
-                else
-                {
-                    _overlayWindow?.ShowForStatus(appStatus);
-                }
-            });
-        };
+                    if (appStatus == AppStatus.Idle)
+                    {
+                        _overlayWindow?.HideOverlay();
+                    }
+                    else
+                    {
+                        _overlayWindow?.ShowForStatus(appStatus);
+                    }
+                });
+            };
 
-        pipeline.ErrorOccurred += (_, error) =>
+            pipeline.ErrorOccurred += (_, error) =>
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    _overlayWindow?.ShowForStatus(AppStatus.Error, error.Message);
+                });
+            };
+        }
+        catch (Exception ex)
         {
-            Dispatcher.InvokeAsync(() =>
-            {
-                _overlayWindow?.ShowForStatus(AppStatus.Error, error.Message);
-            });
-        };
+            MessageBox.Show($"Failed to start: {ex.Message}", "WhisperDesk Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
-    private void ConfigureServices(IServiceCollection services)
+    private static void ConfigureUiServices(IServiceCollection services, string exeDir, string serverAddress)
     {
-        // Configuration
-        // For single-file publish, AppContext.BaseDirectory points to the temp extraction dir.
-        // Use the exe's actual location so appsettings.json sits next to the exe.
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
         var config = new ConfigurationBuilder()
             .SetBasePath(exeDir)
             .AddJsonFile("appsettings.json", optional: false)
@@ -92,13 +99,11 @@ public partial class App : Application
         var settings = new WhisperDeskSettings();
         config.Bind(settings);
 
-        // Register WPF-layer settings (hotkeys, recording, audio)
         services.AddSingleton(settings);
         services.AddSingleton(settings.Hotkeys);
         services.AddSingleton(settings.Audio);
         services.AddSingleton(settings.Recording);
 
-        // Logging
         var logFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "WhisperDesk", "whisperdesk.log");
@@ -109,39 +114,11 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        // Map old settings to Core config objects
-        var pipelineConfig = new PipelineConfig
-        {
-            SttProvider = settings.Transcription.SpeechProvider,
-            LlmProvider = settings.Transcription.CleanupProvider,
-            Language = settings.Transcription.Language,
-            EnableTextCleanup = true,
-            AudioDeviceId = settings.Audio.DeviceId,
-            Audio = new AudioFormatConfig
-            {
-                SampleRate = settings.Audio.SampleRate,
-                Channels = settings.Audio.Channels,
-                BitsPerSample = settings.Audio.BitsPerSample
-            }
-        };
-
-        // Register STT provider (from WhisperDesk.Stt)
-        services.AddSttProvider(pipelineConfig.SttProvider, config);
-
-        // Register LLM provider (from WhisperDesk.Llm)
-        services.AddLlmProvider(pipelineConfig.LlmProvider, config);
-
-        // Register Core pipeline services
-        services.AddWhisperDeskPipeline(pipelineConfig, config);
-
-        // WPF-only services
+        services.AddSingleton<IPipelineController>(new GrpcPipelineClient(serverAddress));
+        services.AddSingleton<AudioDeviceService>();
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();
-
-        // ViewModels
         services.AddSingleton<MainViewModel>();
-
-        // Views
         services.AddSingleton<MainWindow>();
     }
 
@@ -164,13 +141,11 @@ public partial class App : Application
             Visibility = Visibility.Visible
         };
 
-        // Use custom app icon for tray (loaded from embedded resource)
         var iconStream = GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"))?.Stream;
         _trayIcon.Icon = iconStream != null
             ? new System.Drawing.Icon(iconStream)
             : SystemIcons.Application;
 
-        // Context menu
         var contextMenu = new System.Windows.Controls.ContextMenu();
 
         var showItem = new System.Windows.Controls.MenuItem { Header = "Show WhisperDesk" };
@@ -192,6 +167,8 @@ public partial class App : Application
         _trayIcon?.Dispose();
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();
+
+        _server?.Dispose();
 
         if (_serviceProvider is IDisposable disposable)
         {

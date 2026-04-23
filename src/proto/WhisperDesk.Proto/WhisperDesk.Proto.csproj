@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>WhisperDesk.Proto</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="pipeline.proto" GrpcServices="Both" />
+  </ItemGroup>
+</Project>
