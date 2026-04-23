@@ -114,10 +114,15 @@ public sealed class HotwordLearningJob : BackgroundService
         if (newFiles.Count == 0)
             return;
 
+        // Skip the most recent file — it may still be receiving new entries
+        var completedFiles = newFiles.Count > 1 ? newFiles.SkipLast(1).ToList() : [];
+        if (completedFiles.Count == 0)
+            return;
+
         var entries = new List<string>();
         var latestFileTime = markerTime;
 
-        foreach (var file in newFiles)
+        foreach (var file in completedFiles)
         {
             var fileTime = File.GetLastWriteTimeUtc(file);
             if (fileTime > latestFileTime) latestFileTime = fileTime;
