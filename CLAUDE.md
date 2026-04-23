@@ -82,11 +82,11 @@ dotnet test                                     # Run tests
 One command, no external dependencies:
 
 ```bash
-# Production (no dev secrets)
-dotnet publish src/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none
+# Production (no env-specific config)
+dotnet publish src/ui/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none
 
-# Dev (includes appsettings.Development.json with local keys — do NOT distribute)
-dotnet publish src/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none -p:Env=dev
+# With environment config (copies appsettings.{Env}.json into publish output)
+dotnet publish src/ui/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none -p:Env=Development
 ```
 
 Output in `publish/`:

@@ -56,8 +56,7 @@
     <None Update="appsettings.Development.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-      <CopyToPublishDirectory Condition="'$(Env)' != 'dev'">Never</CopyToPublishDirectory>
-      <CopyToPublishDirectory Condition="'$(Env)' == 'dev'">PreserveNewest</CopyToPublishDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
     <None Update="hotwords.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -65,5 +64,10 @@
     </None>
     <Resource Include="Assets\app.ico" />
   </ItemGroup>
+
+  <Target Name="CopyEnvConfig" AfterTargets="Publish" Condition="'$(Env)' != ''">
+    <Copy SourceFiles="appsettings.$(Env).json" DestinationFolder="$(PublishDir)" Condition="Exists('appsettings.$(Env).json')" />
+    <Warning Text="appsettings.$(Env).json not found, skipping." Condition="!Exists('appsettings.$(Env).json')" />
+  </Target>
 
 </Project>
