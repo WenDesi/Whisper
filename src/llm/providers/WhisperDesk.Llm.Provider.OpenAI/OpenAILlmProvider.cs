@@ -5,16 +5,16 @@ using OpenAI;
 using OpenAI.Chat;
 using WhisperDesk.Llm.Contract;
 
-namespace WhisperDesk.Llm.Provider.AzureOpenAI;
+namespace WhisperDesk.Llm.Provider.OpenAI;
 
-public class AzureOpenAILlmProvider : ILlmProvider
+public class OpenAILlmProvider : ILlmProvider
 {
-    private readonly ILogger<AzureOpenAILlmProvider> _logger;
-    private readonly AzureOpenAILlmConfig _config;
+    private readonly ILogger<OpenAILlmProvider> _logger;
+    private readonly OpenAILlmConfig _config;
 
-    public string Name => "Azure OpenAI";
+    public string Name => "OpenAI";
 
-    public AzureOpenAILlmProvider(ILogger<AzureOpenAILlmProvider> logger, AzureOpenAILlmConfig config)
+    public OpenAILlmProvider(ILogger<OpenAILlmProvider> logger, OpenAILlmConfig config)
     {
         _logger = logger;
         _config = config;
@@ -26,8 +26,8 @@ public class AzureOpenAILlmProvider : ILlmProvider
         LlmRequestOptions? options = null,
         CancellationToken ct = default)
     {
-        _logger.LogInformation("[AzureOpenAI] Processing text ({Length} chars) via {Model}.",
-            userText.Length, _config.ChatDeployment);
+        _logger.LogInformation("[OpenAI] Processing text ({Length} chars) via {Model}.",
+            userText.Length, _config.Model);
 
         var chatClient = CreateClient();
         var messages = new List<ChatMessage>
@@ -49,7 +49,7 @@ public class AzureOpenAILlmProvider : ILlmProvider
         var response = await chatClient.CompleteChatAsync(messages, chatOptions, ct);
         var result = response.Value.Content[0].Text;
 
-        _logger.LogInformation("[AzureOpenAI] Response: {InLen} -> {OutLen} chars.",
+        _logger.LogInformation("[OpenAI] Response: {InLen} -> {OutLen} chars.",
             userText.Length, result.Length);
 
         return result;
@@ -61,8 +61,8 @@ public class AzureOpenAILlmProvider : ILlmProvider
         LlmRequestOptions? options = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        _logger.LogInformation("[AzureOpenAI] Streaming text ({Length} chars) via {Model}.",
-            userText.Length, _config.ChatDeployment);
+        _logger.LogInformation("[OpenAI] Streaming text ({Length} chars) via {Model}.",
+            userText.Length, _config.Model);
 
         var chatClient = CreateClient();
         var messages = new List<ChatMessage>
@@ -91,12 +91,15 @@ public class AzureOpenAILlmProvider : ILlmProvider
 
     private ChatClient CreateClient()
     {
+        var clientOptions = new OpenAIClientOptions();
+        if (!string.IsNullOrEmpty(_config.Endpoint))
+        {
+            clientOptions.Endpoint = new Uri(_config.Endpoint);
+        }
+
         return new ChatClient(
             credential: new ApiKeyCredential(_config.ApiKey),
-            model: _config.ChatDeployment,
-            options: new OpenAIClientOptions
-            {
-                Endpoint = new Uri(_config.Endpoint)
-            });
+            model: _config.Model,
+            options: clientOptions);
     }
 }

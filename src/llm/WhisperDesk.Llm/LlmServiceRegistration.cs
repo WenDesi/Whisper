@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WhisperDesk.Llm.Contract;
-using WhisperDesk.Llm.Provider.AzureOpenAI;
+using WhisperDesk.Llm.Provider.OpenAI;
 
 namespace WhisperDesk.Llm;
 
@@ -14,15 +14,15 @@ public static class LlmServiceRegistration
     {
         switch (provider.ToLowerInvariant())
         {
-            case "azureopenai":
-                var config = new AzureOpenAILlmConfig();
-                configuration.GetSection("AzureOpenAI").Bind(config);
+            case "openai":
+                var config = new OpenAILlmConfig();
+                configuration.GetSection("Llm").Bind(config);
                 services.AddSingleton(config);
-                services.AddSingleton<ILlmProvider, AzureOpenAILlmProvider>();
+                services.AddSingleton<ILlmProvider, OpenAILlmProvider>();
                 break;
             default:
                 throw new InvalidOperationException(
-                    $"Unknown LLM provider: '{provider}'. Supported: AzureOpenAI");
+                    $"Unknown LLM provider: '{provider}'. Supported: OpenAI");
         }
 
         return services;
