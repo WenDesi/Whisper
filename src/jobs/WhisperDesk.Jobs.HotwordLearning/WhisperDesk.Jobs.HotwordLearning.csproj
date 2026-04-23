@@ -10,5 +10,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Fluid.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Prompts\*.liquid" />
   </ItemGroup>
 </Project>

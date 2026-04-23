@@ -69,6 +69,39 @@ Follow the same pattern. Example for a future LLM module:
 | Folder under `src/` | Lowercase module name (e.g., `stt/`, `llm/`) |
 | Providers subfolder | `src/<module>/providers/` |
 
+### Prompt Templates
+
+LLM prompts live in `Prompts/` directories within the project that uses them, as **Liquid templates** (`.liquid` files).
+
+- **Location:** `<ProjectDir>/Prompts/*.liquid`
+- **Packaging:** Embedded resource (`<EmbeddedResource Include="Prompts\*.liquid" />`)
+- **Engine:** [Fluid](https://github.com/sebastienros/fluid) (Liquid for .NET)
+- **Variables:** Passed via `TemplateContext.SetValue()` at runtime
+- **Never hardcode prompts in C# code** — always use a `.liquid` file
+
+Example:
+```liquid
+Analyze these transcripts for corrections.
+{% if existing_hotwords.size > 0 %}
+Already known: {{ existing_hotwords | join: ", " }}
+{% endif %}
+Return ONLY a JSON array.
+```
+
+### ProjectReference Rules
+
+**Always use path variables from `Directory.Build.props`.** Never use relative paths like `..\`.
+
+```xml
+<!-- CORRECT -->
+<ProjectReference Include="$(CoreRoot)WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
+
+<!-- WRONG -->
+<ProjectReference Include="..\WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
+```
+
+Available: `$(SrcRoot)`, `$(CoreRoot)`, `$(UiRoot)`, `$(SttRoot)`, `$(LlmRoot)`, `$(TranscriptRoot)`, `$(ServerRoot)`, `$(ProtoRoot)`, `$(JobsRoot)`
+
 ## Build & Run
 
 ```bash

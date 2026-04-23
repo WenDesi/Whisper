@@ -37,6 +37,10 @@
     <PackageVersion Include="System.Text.Json" Version="9.0.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Templating">
+    <PackageVersion Include="Fluid.Core" Version="2.13.0" />
+  </ItemGroup>
+
   <ItemGroup Label="gRPC">
     <PackageVersion Include="Grpc.Tools" Version="2.76.0" />
     <PackageVersion Include="Grpc.Net.Client" Version="2.76.0" />

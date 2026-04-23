@@ -14,7 +14,7 @@ public class HotWordContextProvider : IContextProvider
     private readonly ILogger<HotWordContextProvider> _logger;
     private readonly string _hotWordsFilePath;
 
-    private List<string>? _cachedWords;
+    private List<string> _cachedWords = [];
     private DateTime _cachedLastWriteUtc;
 
     public string Name => "Hot Words";
@@ -41,7 +41,7 @@ public class HotWordContextProvider : IContextProvider
         {
             var lastWrite = File.GetLastWriteTimeUtc(_hotWordsFilePath);
 
-            if (_cachedWords is not null && lastWrite == _cachedLastWriteUtc)
+            if (_cachedWords.Count > 0 && lastWrite == _cachedLastWriteUtc)
             {
                 builder.AddPhraseHints(_cachedWords);
                 _logger.LogDebug("[HotWords] Using cached {Count} hot words.", _cachedWords.Count);

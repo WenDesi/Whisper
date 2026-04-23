@@ -1,4 +1,6 @@
+using System.Reflection;
 using System.Text.Json;
+using Fluid;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
@@ -16,6 +18,9 @@ public sealed class HotwordLearningJob : BackgroundService
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
+
+    private static readonly FluidParser Parser = new();
+    private readonly IFluidTemplate _promptTemplate;
 
     private readonly ILogger<HotwordLearningJob> _logger;
     private readonly ITranscriptionHistoryService _historyService;
@@ -38,6 +43,22 @@ public sealed class HotwordLearningJob : BackgroundService
             ?? System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!;
         _hotWordsFilePath = Path.Combine(exeDir, config.HotWordsFile);
         _markerFilePath = Path.Combine(exeDir, "hotwords-processed.marker");
+
+        _promptTemplate = LoadPromptTemplate("ExtractHotwords.liquid");
+    }
+
+    private static IFluidTemplate LoadPromptTemplate(string name)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourceName = $"WhisperDesk.Jobs.HotwordLearning.Prompts.{name}";
+
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded prompt not found: {resourceName}");
+        using var reader = new StreamReader(stream);
+        var templateText = reader.ReadToEnd();
+
+        return Parser.Parse(templateText)
+            ?? throw new InvalidOperationException($"Failed to parse prompt template: {name}");
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -135,7 +156,8 @@ public sealed class HotwordLearningJob : BackgroundService
 
         _logger.LogInformation("[HotwordLearning] Analyzing {Count} transcripts for hotword candidates.", entries.Count);
 
-        var discoveredWords = await ExtractHotwordsFromSessionAsync(entries, ct);
+        var existing = await LoadExistingHotwordsAsync(ct);
+        var discoveredWords = await ExtractHotwordsFromSessionAsync(entries, existing, ct);
 
         if (discoveredWords.Count == 0)
         {
@@ -143,7 +165,6 @@ public sealed class HotwordLearningJob : BackgroundService
             return;
         }
 
-        var existing = await LoadExistingHotwordsAsync(ct);
         var existingSet = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
         var newWords = discoveredWords.Where(w => !existingSet.Contains(w)).ToList();
 
@@ -159,28 +180,14 @@ public sealed class HotwordLearningJob : BackgroundService
     }
 
     private async Task<List<string>> ExtractHotwordsFromSessionAsync(
-        List<string> transcripts, CancellationToken ct)
+        List<string> transcripts, List<string> existingHotwords, CancellationToken ct)
     {
         var numberedTranscripts = string.Join("\n", transcripts.Select((t, i) => $"[{i + 1}] {t}"));
 
-        const string systemPrompt = """
-            You are a speech recognition improvement assistant. Analyze this sequence of transcripts from the same user session.
+        var context = new TemplateContext();
+        context.SetValue("existing_hotwords", existingHotwords);
 
-            Look for patterns where the user CORRECTS a previous STT misrecognition. Examples:
-
-            1. Explicit correction: User says "不是BR，是PR" or "I said PR, not BR" — the STT misheard "PR" as "BR". Extract "PR".
-
-            2. Repetition with context: User first says "打开那个kube内涕丝" then later says "Kubernetes集群需要更新" — the second mention reveals the correct term. Extract "Kubernetes".
-
-            3. Spelling out: User says "就是G-R-P-C那个框架" or "gRPC，就是Google的那个RPC" — user is clarifying a term the STT might struggle with. Extract "gRPC".
-
-            4. Domain term introduction: User says "我们用的是Terraform，T-E-R-R-A-F-O-R-M" — user spells it out because STT often gets it wrong. Extract "Terraform".
-
-            Only extract words that the user explicitly corrected or clarified. Do NOT guess or infer — if there's no clear correction signal, return an empty array.
-
-            Return ONLY a JSON array of words. Example: ["PR", "Kubernetes", "gRPC"]
-            If no corrections found, return: []
-            """;
+        var systemPrompt = await _promptTemplate.RenderAsync(context);
 
         try
         {
