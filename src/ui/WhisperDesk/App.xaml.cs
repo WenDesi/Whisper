@@ -32,61 +32,66 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // 1. Build backend services (Core, STT, LLM, Pipeline)
-        var backendServices = new ServiceCollection();
-        ConfigureBackendServices(backendServices);
-        var backendProvider = backendServices.BuildServiceProvider();
-
-        // 2. Start in-process gRPC server
-        _grpcServer = GrpcServerHost.Create(backendProvider);
-        _grpcServer.StartAsync().GetAwaiter().GetResult();
-
-        // 3. Build UI services with gRPC client as IPipelineController
-        var uiServices = new ServiceCollection();
-        ConfigureUiServices(uiServices, backendProvider);
-        _serviceProvider = uiServices.BuildServiceProvider();
-
-        SetupTrayIcon();
-
-        _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
-        _mainWindow.Show();
-
-        // Create overlay window — always visible but transparent until needed
-        // No Show/Hide toggling = no focus stealing
-        _overlayWindow = new OverlayWindow();
-        _overlayWindow.Initialize();
-        _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
-
-        // Wire tray tooltip + overlay updates via IPipelineController
-        var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
-        pipeline.StateChanged += (_, pipelineState) =>
+        try
         {
-            Dispatcher.InvokeAsync(() =>
+            // 1. Build backend services (Core, STT, LLM, Pipeline)
+            var backendServices = new ServiceCollection();
+            ConfigureBackendServices(backendServices);
+            var backendProvider = backendServices.BuildServiceProvider();
+
+            // 2. Start in-process gRPC server
+            _grpcServer = GrpcServerHost.Create(backendProvider);
+            _grpcServer.StartAsync().GetAwaiter().GetResult();
+
+            // 3. Build UI services with gRPC client as IPipelineController
+            var uiServices = new ServiceCollection();
+            ConfigureUiServices(uiServices, backendProvider);
+            _serviceProvider = uiServices.BuildServiceProvider();
+
+            SetupTrayIcon();
+
+            _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+            _mainWindow.Show();
+
+            _overlayWindow = new OverlayWindow();
+            _overlayWindow.Initialize();
+            _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
+
+            var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
+            pipeline.StateChanged += (_, pipelineState) =>
             {
-                var appStatus = MapToAppStatus(pipelineState);
-                if (_trayIcon != null)
+                Dispatcher.InvokeAsync(() =>
                 {
-                    _trayIcon.ToolTipText = appStatus.ToTrayTooltip();
-                }
+                    var appStatus = MapToAppStatus(pipelineState);
+                    if (_trayIcon != null)
+                    {
+                        _trayIcon.ToolTipText = appStatus.ToTrayTooltip();
+                    }
 
-                if (appStatus == AppStatus.Idle)
-                {
-                    _overlayWindow?.HideOverlay();
-                }
-                else
-                {
-                    _overlayWindow?.ShowForStatus(appStatus);
-                }
-            });
-        };
+                    if (appStatus == AppStatus.Idle)
+                    {
+                        _overlayWindow?.HideOverlay();
+                    }
+                    else
+                    {
+                        _overlayWindow?.ShowForStatus(appStatus);
+                    }
+                });
+            };
 
-        pipeline.ErrorOccurred += (_, error) =>
+            pipeline.ErrorOccurred += (_, error) =>
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    _overlayWindow?.ShowForStatus(AppStatus.Error, error.Message);
+                });
+            };
+        }
+        catch (Exception ex)
         {
-            Dispatcher.InvokeAsync(() =>
-            {
-                _overlayWindow?.ShowForStatus(AppStatus.Error, error.Message);
-            });
-        };
+            MessageBox.Show($"Failed to start: {ex.Message}", "WhisperDesk Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
     private void ConfigureBackendServices(IServiceCollection services)
@@ -161,6 +166,9 @@ public partial class App : Application
         // IPipelineController via gRPC client
         var client = new GrpcPipelineClient(GrpcServerHost.Address);
         services.AddSingleton<IPipelineController>(client);
+
+        // Audio device service (local hardware, runs in UI process)
+        services.AddSingleton<WhisperDesk.Core.Services.AudioDeviceService>();
 
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();

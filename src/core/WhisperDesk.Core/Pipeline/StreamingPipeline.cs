@@ -22,6 +22,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IEnumerable<IContextProvider> _contextProviders;
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
     private readonly AudioDeviceService _audioDeviceService;
+    private readonly TranscriptionLogService _logService;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
@@ -54,6 +55,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         AudioRouter audioRouter,
         IStreamingSttProvider sttProvider,
         AudioDeviceService audioDeviceService,
+        TranscriptionLogService logService,
         IEnumerable<IContextProvider> contextProviders,
         IEnumerable<IPostProcessingStage> postProcessingStages)
     {
@@ -62,6 +64,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _audioRouter = audioRouter;
         _sttProvider = sttProvider;
         _audioDeviceService = audioDeviceService;
+        _logService = logService;
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
     }
@@ -197,6 +200,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
             State = PipelineState.Completed;
             SessionCompleted?.Invoke(this, result);
+            _ = _logService.LogTranscriptionAsync(result);
 
             return result;
         }
