@@ -42,6 +42,8 @@ public class WhisperDeskServer : IDisposable
             options.ListenLocalhost(port, o => o.Protocols = HttpProtocols.Http2);
         });
 
+        builder.Host.ConfigureHostOptions(o => o.ShutdownTimeout = TimeSpan.FromSeconds(1));
+
         var logFilePath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "WhisperDesk", "whisperdesk.log");

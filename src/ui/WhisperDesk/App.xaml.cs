@@ -185,7 +185,7 @@ public partial class App : Application
         // Then stop the server on a background thread to avoid UI deadlock
         if (_server != null)
         {
-            Task.Run(() => _server.Dispose()).Wait(TimeSpan.FromSeconds(5));
+            Task.Run(() => _server.Dispose()).Wait(TimeSpan.FromSeconds(2));
         }
 
         _singleInstanceMutex?.ReleaseMutex();
