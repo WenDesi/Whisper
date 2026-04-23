@@ -167,7 +167,7 @@ public sealed class HotwordLearningJob : BackgroundService
             entriesToAnalyze.Count, newEntries.Count, contextEntries.Count);
 
         var existing = await LoadExistingHotwordsAsync(ct);
-        var discoveredWords = await ExtractHotwordsFromSessionAsync(entriesToAnalyze, existing, ct);
+        var discoveredWords = await ExtractHotwordsFromSessionAsync(entriesToAnalyze, ct);
 
         if (discoveredWords.Count > 0)
         {
@@ -187,14 +187,11 @@ public sealed class HotwordLearningJob : BackgroundService
     }
 
     private async Task<List<string>> ExtractHotwordsFromSessionAsync(
-        List<string> transcripts, List<string> existingHotwords, CancellationToken ct)
+        List<string> transcripts, CancellationToken ct)
     {
         var numberedTranscripts = string.Join("\n", transcripts.Select((t, i) => $"[{i + 1}] {t}"));
 
-        var context = new TemplateContext();
-        context.SetValue("existing_hotwords", existingHotwords);
-
-        var systemPrompt = await _promptTemplate.RenderAsync(context);
+        var systemPrompt = await _promptTemplate.RenderAsync(new TemplateContext());
 
         try
         {
