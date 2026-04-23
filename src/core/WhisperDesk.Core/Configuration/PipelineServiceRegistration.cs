@@ -31,9 +31,6 @@ public static class PipelineServiceRegistration
             services.AddSingleton<IPostProcessingStage, LlmTextCleanupStage>();
         }
 
-        // Logging service
-        services.AddSingleton<TranscriptionLogService>();
-
         // Pipeline orchestrator
         services.AddSingleton<IPipelineController, StreamingPipeline>();
 

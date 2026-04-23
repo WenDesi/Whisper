@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>WhisperDesk.Transcript.Contract</RootNamespace>
+  </PropertyGroup>
+</Project>

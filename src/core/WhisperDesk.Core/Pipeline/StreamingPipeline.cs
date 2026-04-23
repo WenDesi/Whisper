@@ -3,6 +3,7 @@ using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Stt.Contract;
 using WhisperDesk.Core.Services;
+using WhisperDesk.Transcript.Contract;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -22,11 +23,13 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IEnumerable<IContextProvider> _contextProviders;
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
     private readonly AudioDeviceService _audioDeviceService;
-    private readonly TranscriptionLogService _logService;
+    private readonly ITranscriptionHistoryService _historyService;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
+    private string _foregroundProcess = "";
+    private string _foregroundWindowTitle = "";
 
     public PipelineState State
     {
@@ -55,7 +58,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         AudioRouter audioRouter,
         IStreamingSttProvider sttProvider,
         AudioDeviceService audioDeviceService,
-        TranscriptionLogService logService,
+        ITranscriptionHistoryService historyService,
         IEnumerable<IContextProvider> contextProviders,
         IEnumerable<IPostProcessingStage> postProcessingStages)
     {
@@ -64,12 +67,12 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _audioRouter = audioRouter;
         _sttProvider = sttProvider;
         _audioDeviceService = audioDeviceService;
-        _logService = logService;
+        _historyService = historyService;
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
     }
 
-    public async Task StartSessionAsync(CancellationToken ct = default)
+    public async Task StartSessionAsync(string foregroundProcess = "", string foregroundWindowTitle = "", CancellationToken ct = default)
     {
         if (!await _sessionLock.WaitAsync(0, ct))
         {
@@ -89,6 +92,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
             {
                 _logger.LogInformation("[Pipeline] Starting session...");
                 State = PipelineState.Listening;
+                _foregroundProcess = foregroundProcess;
+                _foregroundWindowTitle = foregroundWindowTitle;
 
                 var audioFormat = new AudioFormat
                 {
@@ -200,7 +205,22 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
             State = PipelineState.Completed;
             SessionCompleted?.Invoke(this, result);
-            _ = _logService.LogTranscriptionAsync(result);
+
+            var entry = new TranscriptionHistoryEntry
+            {
+                Id = result.Id,
+                Timestamp = result.Timestamp,
+                Duration = result.AudioDuration,
+                Language = result.Language,
+                RawText = result.RawTranscript,
+                ProcessedText = result.ProcessedText,
+                Source = result.SourceFile ?? "microphone",
+                SttProvider = _config.SttProvider,
+                LlmProvider = _config.LlmProvider,
+                ForegroundProcess = _foregroundProcess,
+                ForegroundWindowTitle = _foregroundWindowTitle
+            };
+            _ = _historyService.WriteEntryAsync(entry);
 
             return result;
         }

@@ -28,6 +28,8 @@ public class PipelineConfig
 
     /// <summary>Audio format settings.</summary>
     public AudioFormatConfig Audio { get; set; } = new();
+
+    public double HistorySessionGapMinutes { get; set; } = 10;
 }
 
 public class AudioFormatConfig
