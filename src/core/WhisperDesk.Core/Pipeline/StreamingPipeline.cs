@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
-using WhisperDesk.Core.Models;
+using WhisperDesk.Core.Contract;
 using WhisperDesk.Stt.Contract;
 using WhisperDesk.Core.Services;
 

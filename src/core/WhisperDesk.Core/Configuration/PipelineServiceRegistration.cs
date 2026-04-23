@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using WhisperDesk.Core.Contract;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Services;
 using WhisperDesk.Core.Stages.PostProcessing;

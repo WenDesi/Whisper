@@ -3,7 +3,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
-using WhisperDesk.Core.Services;
+using WhisperDesk.Services;
 
 namespace WhisperDesk.ViewModels;
 

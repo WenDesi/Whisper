@@ -1,6 +1,5 @@
 using Grpc.Net.Client;
-using WhisperDesk.Core.Models;
-using WhisperDesk.Core.Pipeline;
+using WhisperDesk.Core.Contract;
 using WhisperDesk.Proto;
 
 namespace WhisperDesk.Server;

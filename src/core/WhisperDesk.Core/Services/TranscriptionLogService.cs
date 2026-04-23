@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Core.Models;
+using WhisperDesk.Core.Contract;
 
 namespace WhisperDesk.Core.Services;
 
