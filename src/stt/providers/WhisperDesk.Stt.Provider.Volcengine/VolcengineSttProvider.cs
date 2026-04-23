@@ -281,9 +281,14 @@ public class VolcengineSttProvider : IStreamingSttProvider
         if (options.PhraseHints.Count == 0)
             return null;
 
-        var hotwords = options.PhraseHints.Select(w => new { word = w }).ToArray();
-        var contextJson = JsonSerializer.Serialize(new { hotwords });
+        var context = new VolcengineContext
+        {
+            Hotwords = options.PhraseHints
+                .Select(w => new VolcengineHotword { Word = w })
+                .ToList()
+        };
 
+        var contextJson = JsonSerializer.Serialize(context, VolcengineJsonContext.Default.VolcengineContext);
         return new VolcengineCorpus { Context = contextJson };
     }
 
