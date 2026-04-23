@@ -4,8 +4,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\stt\WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
-    <ProjectReference Include="..\llm\WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
+    <ProjectReference Include="$(SttRoot)WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
+    <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
   </ItemGroup>
 
   <ItemGroup>

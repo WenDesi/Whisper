@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WhisperDesk\WhisperDesk.csproj" />
+    <ProjectReference Include="$(SrcRoot)WhisperDesk\WhisperDesk.csproj" />
   </ItemGroup>
 
 </Project>

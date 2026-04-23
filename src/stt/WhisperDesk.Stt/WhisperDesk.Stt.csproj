@@ -4,9 +4,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
-    <ProjectReference Include="..\providers\WhisperDesk.Stt.Provider.Azure\WhisperDesk.Stt.Provider.Azure.csproj" />
-    <ProjectReference Include="..\providers\WhisperDesk.Stt.Provider.Volcengine\WhisperDesk.Stt.Provider.Volcengine.csproj" />
+    <ProjectReference Include="$(SttRoot)WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
+    <ProjectReference Include="$(SttRoot)providers\WhisperDesk.Stt.Provider.Azure\WhisperDesk.Stt.Provider.Azure.csproj" />
+    <ProjectReference Include="$(SttRoot)providers\WhisperDesk.Stt.Provider.Volcengine\WhisperDesk.Stt.Provider.Volcengine.csproj" />
   </ItemGroup>
 
   <ItemGroup>
