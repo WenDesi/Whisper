@@ -32,7 +32,7 @@ public static class PipelineServiceRegistration
             services.AddSingleton<IPostProcessingStage, LlmTextCleanupStage>();
         }
 
-        // Transcript services (log + history)
+        // Transcript history
         services.AddTranscriptServices(pipelineConfig.HistorySessionGapMinutes);
 
         // Pipeline orchestrator
