@@ -7,11 +7,9 @@ using Hardcodet.Wpf.TaskbarNotification;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Core.Configuration;
-using WhisperDesk.Stt;
-using WhisperDesk.Llm;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
+using WhisperDesk.Core.Services;
 using WhisperDesk.Server;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
@@ -26,7 +24,7 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
-    private Microsoft.AspNetCore.Builder.WebApplication? _grpcServer;
+    private WhisperDeskServer? _server;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -34,19 +32,15 @@ public partial class App : Application
 
         try
         {
-            // 1. Build backend services (Core, STT, LLM, Pipeline)
-            var backendServices = new ServiceCollection();
-            ConfigureBackendServices(backendServices);
-            var backendProvider = backendServices.BuildServiceProvider();
+            var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
 
-            // 2. Start in-process gRPC server
-            _grpcServer = GrpcServerHost.Create(backendProvider);
-            _grpcServer.StartAsync().GetAwaiter().GetResult();
+            // 1. Start backend server (owns Core, STT, LLM, Pipeline, gRPC)
+            _server = WhisperDeskServer.Start(exeDir);
 
-            // 3. Build UI services with gRPC client as IPipelineController
-            var uiServices = new ServiceCollection();
-            ConfigureUiServices(uiServices, backendProvider);
-            _serviceProvider = uiServices.BuildServiceProvider();
+            // 2. Build UI services
+            var services = new ServiceCollection();
+            ConfigureUiServices(services, exeDir, _server.Address);
+            _serviceProvider = services.BuildServiceProvider();
 
             SetupTrayIcon();
 
@@ -94,51 +88,8 @@ public partial class App : Application
         }
     }
 
-    private void ConfigureBackendServices(IServiceCollection services)
+    private static void ConfigureUiServices(IServiceCollection services, string exeDir, string serverAddress)
     {
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
-        var config = new ConfigurationBuilder()
-            .SetBasePath(exeDir)
-            .AddJsonFile("appsettings.json", optional: false)
-            .AddJsonFile("appsettings.Development.json", optional: true)
-            .Build();
-
-        var settings = new WhisperDeskSettings();
-        config.Bind(settings);
-
-        var logFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WhisperDesk", "whisperdesk.log");
-        services.AddLogging(builder =>
-        {
-            builder.AddConsole();
-            builder.AddProvider(new FileLoggerProvider(logFilePath));
-            builder.SetMinimumLevel(LogLevel.Debug);
-        });
-
-        var pipelineConfig = new PipelineConfig
-        {
-            SttProvider = settings.Transcription.SpeechProvider,
-            LlmProvider = settings.Transcription.CleanupProvider,
-            Language = settings.Transcription.Language,
-            EnableTextCleanup = true,
-            AudioDeviceId = settings.Audio.DeviceId,
-            Audio = new AudioFormatConfig
-            {
-                SampleRate = settings.Audio.SampleRate,
-                Channels = settings.Audio.Channels,
-                BitsPerSample = settings.Audio.BitsPerSample
-            }
-        };
-
-        services.AddSttProvider(pipelineConfig.SttProvider, config);
-        services.AddLlmProvider(pipelineConfig.LlmProvider, config);
-        services.AddWhisperDeskPipeline(pipelineConfig, config);
-    }
-
-    private void ConfigureUiServices(IServiceCollection services, IServiceProvider backendProvider)
-    {
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
         var config = new ConfigurationBuilder()
             .SetBasePath(exeDir)
             .AddJsonFile("appsettings.json", optional: false)
@@ -163,13 +114,8 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        // IPipelineController via gRPC client
-        var client = new GrpcPipelineClient(GrpcServerHost.Address);
-        services.AddSingleton<IPipelineController>(client);
-
-        // Audio device service (local hardware, runs in UI process)
-        services.AddSingleton<WhisperDesk.Core.Services.AudioDeviceService>();
-
+        services.AddSingleton<IPipelineController>(new GrpcPipelineClient(serverAddress));
+        services.AddSingleton<AudioDeviceService>();
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();
         services.AddSingleton<MainViewModel>();
@@ -195,13 +141,11 @@ public partial class App : Application
             Visibility = Visibility.Visible
         };
 
-        // Use custom app icon for tray (loaded from embedded resource)
         var iconStream = GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"))?.Stream;
         _trayIcon.Icon = iconStream != null
             ? new System.Drawing.Icon(iconStream)
             : SystemIcons.Application;
 
-        // Context menu
         var contextMenu = new System.Windows.Controls.ContextMenu();
 
         var showItem = new System.Windows.Controls.MenuItem { Header = "Show WhisperDesk" };
@@ -224,7 +168,7 @@ public partial class App : Application
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();
 
-        _grpcServer?.StopAsync().GetAwaiter().GetResult();
+        _server?.Dispose();
 
         if (_serviceProvider is IDisposable disposable)
         {
