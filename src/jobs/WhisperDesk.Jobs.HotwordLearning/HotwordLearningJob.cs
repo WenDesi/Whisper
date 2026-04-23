@@ -7,14 +7,10 @@ using WhisperDesk.Transcript.Contract;
 
 namespace WhisperDesk.Jobs.HotwordLearning;
 
-/// <summary>
-/// Background job that periodically analyzes transcription history to discover
-/// new hotwords by comparing raw STT output with LLM-corrected text.
-/// </summary>
 public sealed class HotwordLearningJob : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
-    private const int MaxEntriesPerBatch = 20;
+    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
+    private const int MaxEntriesPerSession = 50;
 
     private static readonly JsonSerializerOptions CamelCase = new()
     {
@@ -26,6 +22,7 @@ public sealed class HotwordLearningJob : BackgroundService
     private readonly ILlmProvider _llmProvider;
     private readonly string _hotWordsFilePath;
     private readonly string _markerFilePath;
+    private DateTime _lastHistoryDirWriteUtc = DateTime.MinValue;
 
     public HotwordLearningJob(
         ILogger<HotwordLearningJob> logger,
@@ -45,14 +42,16 @@ public sealed class HotwordLearningJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Delay initial run to let the app start up
-        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await RunCycleAsync(stoppingToken);
+                if (HasHistoryChanged())
+                {
+                    await RunCycleAsync(stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -67,32 +66,35 @@ public sealed class HotwordLearningJob : BackgroundService
         }
     }
 
-    private async Task RunCycleAsync(CancellationToken ct)
+    private bool HasHistoryChanged()
     {
         var historyDir = _historyService.GetHistoryDirectory();
         if (!Directory.Exists(historyDir))
-        {
-            _logger.LogDebug("[HotwordLearning] History directory not found: {Dir}", historyDir);
-            return;
-        }
+            return false;
 
+        var dirWriteUtc = Directory.GetLastWriteTimeUtc(historyDir);
+        if (dirWriteUtc <= _lastHistoryDirWriteUtc)
+            return false;
+
+        _lastHistoryDirWriteUtc = dirWriteUtc;
+        return true;
+    }
+
+    private async Task RunCycleAsync(CancellationToken ct)
+    {
+        var historyDir = _historyService.GetHistoryDirectory();
         var markerTime = ReadMarkerTimestamp();
 
-        // Find JSONL files newer than the marker
         var newFiles = Directory.GetFiles(historyDir, "*.jsonl")
             .Where(f => File.GetLastWriteTimeUtc(f) > markerTime)
             .OrderBy(f => File.GetLastWriteTimeUtc(f))
             .ToList();
 
         if (newFiles.Count == 0)
-        {
-            _logger.LogDebug("[HotwordLearning] No new history files to process.");
             return;
-        }
 
-        // Collect differing pairs from new files
-        var pairs = new List<(string Raw, string Processed)>();
-        DateTime latestFileTime = markerTime;
+        var entries = new List<string>();
+        var latestFileTime = markerTime;
 
         foreach (var file in newFiles)
         {
@@ -108,18 +110,12 @@ public sealed class HotwordLearningJob : BackgroundService
                     try
                     {
                         var entry = JsonSerializer.Deserialize<TranscriptionHistoryEntry>(line, CamelCase);
-                        if (entry is not null
-                            && !string.IsNullOrWhiteSpace(entry.RawText)
-                            && !string.IsNullOrWhiteSpace(entry.ProcessedText)
-                            && !string.Equals(entry.RawText, entry.ProcessedText, StringComparison.Ordinal))
+                        if (entry is not null && !string.IsNullOrWhiteSpace(entry.RawText))
                         {
-                            pairs.Add((entry.RawText, entry.ProcessedText));
+                            entries.Add(entry.RawText);
                         }
                     }
-                    catch (JsonException)
-                    {
-                        // Skip malformed lines
-                    }
+                    catch (JsonException) { }
                 }
             }
             catch (Exception ex)
@@ -128,34 +124,25 @@ public sealed class HotwordLearningJob : BackgroundService
             }
         }
 
-        if (pairs.Count == 0)
+        if (entries.Count == 0)
         {
-            _logger.LogDebug("[HotwordLearning] No differing pairs found in new history files.");
             WriteMarkerTimestamp(latestFileTime);
             return;
         }
 
-        _logger.LogInformation("[HotwordLearning] Found {Count} differing pairs across {Files} files.",
-            pairs.Count, newFiles.Count);
+        if (entries.Count > MaxEntriesPerSession)
+            entries = entries.TakeLast(MaxEntriesPerSession).ToList();
 
-        // Process in batches
-        var discoveredWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        _logger.LogInformation("[HotwordLearning] Analyzing {Count} transcripts for hotword candidates.", entries.Count);
 
-        for (int i = 0; i < pairs.Count; i += MaxEntriesPerBatch)
-        {
-            var batch = pairs.Skip(i).Take(MaxEntriesPerBatch).ToList();
-            var words = await ExtractHotwordsFromBatchAsync(batch, ct);
-            foreach (var w in words) discoveredWords.Add(w);
-        }
+        var discoveredWords = await ExtractHotwordsFromSessionAsync(entries, ct);
 
         if (discoveredWords.Count == 0)
         {
-            _logger.LogDebug("[HotwordLearning] LLM did not suggest any new hotwords.");
             WriteMarkerTimestamp(latestFileTime);
             return;
         }
 
-        // Merge with existing hotwords
         var existing = await LoadExistingHotwordsAsync(ct);
         var existingSet = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
         var newWords = discoveredWords.Where(w => !existingSet.Contains(w)).ToList();
@@ -167,32 +154,38 @@ public sealed class HotwordLearningJob : BackgroundService
             _logger.LogInformation("[HotwordLearning] Added {Count} new hotwords: {Words}",
                 newWords.Count, string.Join(", ", newWords));
         }
-        else
-        {
-            _logger.LogDebug("[HotwordLearning] All suggested words already exist.");
-        }
 
         WriteMarkerTimestamp(latestFileTime);
     }
 
-    private async Task<List<string>> ExtractHotwordsFromBatchAsync(
-        List<(string Raw, string Processed)> batch, CancellationToken ct)
+    private async Task<List<string>> ExtractHotwordsFromSessionAsync(
+        List<string> transcripts, CancellationToken ct)
     {
-        var pairsText = string.Join("\n", batch.Select((p, i) =>
-            $"{i + 1}. Raw: \"{p.Raw}\"\n   Corrected: \"{p.Processed}\""));
+        var numberedTranscripts = string.Join("\n", transcripts.Select((t, i) => $"[{i + 1}] {t}"));
 
-        const string systemPrompt =
-            "You are a speech recognition improvement assistant. " +
-            "Compare these raw STT outputs with the corrected versions. " +
-            "Extract proper nouns, technical terms, or specific words that the STT misrecognized. " +
-            "Return ONLY a JSON array of words that should be added as hotwords. " +
-            "Example: [\"Kubernetes\", \"gRPC\", \"Redis\"]";
+        const string systemPrompt = """
+            You are a speech recognition improvement assistant. Analyze this sequence of transcripts from the same user session.
+
+            Look for patterns where the user CORRECTS a previous STT misrecognition. Examples:
+
+            1. Explicit correction: User says "不是BR，是PR" or "I said PR, not BR" — the STT misheard "PR" as "BR". Extract "PR".
+
+            2. Repetition with context: User first says "打开那个kube内涕丝" then later says "Kubernetes集群需要更新" — the second mention reveals the correct term. Extract "Kubernetes".
+
+            3. Spelling out: User says "就是G-R-P-C那个框架" or "gRPC，就是Google的那个RPC" — user is clarifying a term the STT might struggle with. Extract "gRPC".
+
+            4. Domain term introduction: User says "我们用的是Terraform，T-E-R-R-A-F-O-R-M" — user spells it out because STT often gets it wrong. Extract "Terraform".
+
+            Only extract words that the user explicitly corrected or clarified. Do NOT guess or infer — if there's no clear correction signal, return an empty array.
+
+            Return ONLY a JSON array of words. Example: ["PR", "Kubernetes", "gRPC"]
+            If no corrections found, return: []
+            """;
 
         try
         {
-            var response = await _llmProvider.ProcessTextAsync(systemPrompt, pairsText, ct: ct);
+            var response = await _llmProvider.ProcessTextAsync(systemPrompt, numberedTranscripts, ct: ct);
 
-            // Extract JSON array from response (handle markdown code blocks)
             var jsonStart = response.IndexOf('[');
             var jsonEnd = response.LastIndexOf(']');
             if (jsonStart < 0 || jsonEnd < 0 || jsonEnd <= jsonStart)
@@ -207,7 +200,7 @@ public sealed class HotwordLearningJob : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[HotwordLearning] LLM call failed for batch.");
+            _logger.LogWarning(ex, "[HotwordLearning] LLM call failed.");
             return [];
         }
     }
