@@ -8,10 +8,12 @@ namespace WhisperDesk.Server;
 public class PipelineGrpcService : PipelineService.PipelineServiceBase
 {
     private readonly IPipelineController _pipeline;
+    private readonly CancellationToken _shutdownToken;
 
-    public PipelineGrpcService(IPipelineController pipeline)
+    public PipelineGrpcService(IPipelineController pipeline, CancellationTokenSource shutdownCts)
     {
         _pipeline = pipeline;
+        _shutdownToken = shutdownCts.Token;
     }
 
     public override async Task<StartSessionResponse> StartSession(StartSessionRequest request, ServerCallContext context)
@@ -64,6 +66,9 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
     {
         var channel = Channel.CreateUnbounded<PipelineEvent>();
 
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, _shutdownToken);
+        var ct = linkedCts.Token;
+
         void OnStateChanged(object? s, PipelineState state) =>
             channel.Writer.TryWrite(new PipelineEvent { StateChanged = new StateChangedEvent { State = MapState(state) } });
 
@@ -81,9 +86,11 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         _pipeline.SessionCompleted += OnCompleted;
         _pipeline.ErrorOccurred += OnError;
 
+        ct.Register(() => channel.Writer.TryComplete());
+
         try
         {
-            await foreach (var evt in channel.Reader.ReadAllAsync(context.CancellationToken))
+            await foreach (var evt in channel.Reader.ReadAllAsync(ct))
             {
                 await responseStream.WriteAsync(evt);
             }

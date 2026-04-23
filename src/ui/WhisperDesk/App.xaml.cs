@@ -23,7 +23,9 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
     private WhisperDeskServer? _server;
+    private GrpcPipelineClient? _grpcClient;
     private Mutex? _singleInstanceMutex;
+    private int _exitRequested;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -45,8 +47,9 @@ public partial class App : Application
             _server = WhisperDeskServer.Start(exeDir);
 
             // 2. Build UI services
+            _grpcClient = new GrpcPipelineClient(_server.Address);
             var services = new ServiceCollection();
-            ConfigureUiServices(services, exeDir, _server.Address);
+            ConfigureUiServices(services, exeDir, _server.Address, _grpcClient);
             _serviceProvider = services.BuildServiceProvider();
 
             SetupTrayIcon();
@@ -95,7 +98,7 @@ public partial class App : Application
         }
     }
 
-    private static void ConfigureUiServices(IServiceCollection services, string exeDir, string serverAddress)
+    private static void ConfigureUiServices(IServiceCollection services, string exeDir, string serverAddress, GrpcPipelineClient grpcClient)
     {
         var config = new ConfigurationBuilder()
             .SetBasePath(exeDir)
@@ -120,7 +123,7 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        services.AddSingleton<IPipelineController>(new GrpcPipelineClient(serverAddress));
+        services.AddSingleton<IPipelineController>(grpcClient);
         services.AddSingleton(new GrpcDeviceClient(serverAddress));
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();
@@ -170,26 +173,88 @@ public partial class App : Application
 
     private void ExitApplication()
     {
-        _trayIcon?.Dispose();
+        if (Interlocked.Exchange(ref _exitRequested, 1) != 0)
+        {
+            return;
+        }
+
+        var trayIcon = _trayIcon;
+        _trayIcon = null;
+        trayIcon?.Dispose();
+
         _overlayWindow?.Close();
+        _overlayWindow = null;
         _mainWindow?.ForceClose();
+        _mainWindow = null;
 
-        // Dispose UI services first (cancels gRPC subscription stream)
-        if (_serviceProvider is IDisposable disposable)
+        var serviceProvider = _serviceProvider;
+        _serviceProvider = null;
+        var grpcClient = _grpcClient;
+        _grpcClient = null;
+        var server = _server;
+        _server = null;
+        var singleInstanceMutex = _singleInstanceMutex;
+        _singleInstanceMutex = null;
+
+        try
         {
-            disposable.Dispose();
+            (serviceProvider as IDisposable)?.Dispose();
+        }
+        catch
+        {
         }
 
-        // Then stop the server on a background thread to avoid UI deadlock
-        if (_server != null)
+        try
         {
-            Task.Run(() => _server.Dispose()).Wait(TimeSpan.FromSeconds(5));
+            grpcClient?.Dispose();
+        }
+        catch
+        {
         }
 
-        _singleInstanceMutex?.ReleaseMutex();
-        _singleInstanceMutex?.Dispose();
+        try
+        {
+            server?.SignalShutdown();
+        }
+        catch
+        {
+        }
+
+        if (server != null)
+        {
+            DisposeServerInBackground(server);
+        }
+
+        try
+        {
+            singleInstanceMutex?.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+        }
+
+        singleInstanceMutex?.Dispose();
 
         Shutdown();
+    }
+
+    private static void DisposeServerInBackground(WhisperDeskServer server)
+    {
+        var shutdownThread = new Thread(() =>
+        {
+            try
+            {
+                server.Dispose();
+            }
+            catch
+            {
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "WhisperDeskServerShutdown"
+        };
+        shutdownThread.Start();
     }
 
     protected override void OnExit(ExitEventArgs e)
