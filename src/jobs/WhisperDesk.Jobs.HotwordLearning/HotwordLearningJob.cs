@@ -104,10 +104,16 @@ public sealed class HotwordLearningJob : BackgroundService
         if (!Directory.Exists(historyDir))
             return false;
 
-        var latestFileWrite = Directory.GetFiles(historyDir, "*.jsonl")
+        var files = Directory.GetFiles(historyDir, "*.jsonl");
+        if (files.Length == 0)
+            return false;
+
+        var latestFileWrite = files
             .Select(f => File.GetLastWriteTimeUtc(f))
-            .DefaultIfEmpty(DateTime.MinValue)
             .Max();
+
+        _logger.LogDebug("[HotwordLearning] Latest file write: {Latest}, cached: {Cached}",
+            latestFileWrite, _lastHistoryDirWriteUtc);
 
         if (latestFileWrite <= _lastHistoryDirWriteUtc)
             return false;
