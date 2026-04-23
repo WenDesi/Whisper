@@ -120,14 +120,11 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
 
     private static PipelineResult MapResult(PipelineResultDto dto) => new()
     {
-        Id = dto.Id,
         RawTranscript = dto.RawTranscript,
         ProcessedText = dto.ProcessedText,
         AudioDuration = TimeSpan.FromTicks(dto.AudioDurationTicks),
         Timestamp = new DateTime(dto.TimestampTicks),
-        Language = dto.Language,
-        SttProvider = dto.SttProvider,
-        LlmProvider = dto.LlmProvider
+        Language = dto.Language
     };
 
     public void Dispose()

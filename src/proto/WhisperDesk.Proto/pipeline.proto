@@ -51,15 +51,12 @@ enum PipelineStateDto {
 }
 
 message PipelineResultDto {
-  string id = 1;
-  string raw_transcript = 2;
-  string processed_text = 3;
-  int64 audio_duration_ticks = 4;
-  int64 timestamp_ticks = 5;
-  string language = 6;
-  optional string source_file = 7;
-  string stt_provider = 8;
-  string llm_provider = 9;
+  string raw_transcript = 1;
+  string processed_text = 2;
+  int64 audio_duration_ticks = 3;
+  int64 timestamp_ticks = 4;
+  string language = 5;
+  optional string source_file = 6;
 }
 
 message PipelineErrorDto {
