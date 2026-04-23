@@ -108,7 +108,9 @@ public sealed class HotwordLearningJob : BackgroundService
     {
         var historyDir = _historyService.GetHistoryDirectory();
         var markerTimestamp = ReadMarkerTimestamp();
-        var contextCutoff = markerTimestamp - ContextWindow;
+        var contextCutoff = markerTimestamp > DateTime.MinValue + ContextWindow
+            ? markerTimestamp - ContextWindow
+            : DateTime.MinValue;
 
         var allFiles = Directory.GetFiles(historyDir, "*.jsonl")
             .OrderBy(f => f)

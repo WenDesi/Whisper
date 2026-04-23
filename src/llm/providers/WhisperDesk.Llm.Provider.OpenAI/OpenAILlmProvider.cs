@@ -97,8 +97,10 @@ public class OpenAILlmProvider : ILlmProvider
             clientOptions.Endpoint = new Uri(_config.Endpoint);
         }
 
+        var apiKey = string.IsNullOrEmpty(_config.ApiKey) ? "no-key" : _config.ApiKey;
+
         return new ChatClient(
-            credential: new ApiKeyCredential(_config.ApiKey),
+            credential: new ApiKeyCredential(apiKey),
             model: _config.Model,
             options: clientOptions);
     }

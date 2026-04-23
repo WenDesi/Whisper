@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Transcript.Contract;
@@ -12,7 +13,8 @@ public class TranscriptionHistoryService : ITranscriptionHistoryService
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public TranscriptionHistoryService(
