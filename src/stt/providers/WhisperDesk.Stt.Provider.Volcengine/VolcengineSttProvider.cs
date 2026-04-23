@@ -239,10 +239,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
                 EnableItn = true,
                 EnablePunc = true,
                 ResultType = "single",
-                ShowUtterances = true,
-                Hotwords = options.PhraseHints.Count > 0
-                    ? options.PhraseHints.Select(w => new VolcengineHotword { Words = w }).ToList()
-                    : null
+                ShowUtterances = true
             }
         };
 

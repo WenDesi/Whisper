@@ -54,16 +54,6 @@ internal class VolcengineRequestInfo
 
     [JsonPropertyName("show_utterances")]
     public bool ShowUtterances { get; set; } = true;
-
-    [JsonPropertyName("hotwords")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<VolcengineHotword>? Hotwords { get; set; }
-}
-
-internal class VolcengineHotword
-{
-    [JsonPropertyName("words")]
-    public string Words { get; set; } = "";
 }
 
 internal class VolcengineResponse
