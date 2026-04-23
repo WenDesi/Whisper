@@ -23,10 +23,11 @@ public class HotWordContextProvider : IContextProvider
     {
         _logger = logger;
 
-        // Resolve hot words file relative to exe directory
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath
-            ?? System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!;
-        _hotWordsFilePath = Path.Combine(exeDir, config.HotWordsFile);
+        var appDataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WhisperDesk");
+        Directory.CreateDirectory(appDataDir);
+        _hotWordsFilePath = Path.Combine(appDataDir, config.HotWordsFile);
     }
 
     public async Task ContributeAsync(SessionContextBuilder builder, CancellationToken ct = default)

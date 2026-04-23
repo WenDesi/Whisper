@@ -40,10 +40,12 @@ public sealed class HotwordLearningJob : BackgroundService
         _historyService = historyService;
         _llmProvider = llmProvider;
 
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath
-            ?? System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!;
-        _hotWordsFilePath = Path.Combine(exeDir, config.HotWordsFile);
-        _markerFilePath = Path.Combine(exeDir, "hotwords-processed.marker");
+        var appDataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WhisperDesk");
+        Directory.CreateDirectory(appDataDir);
+        _hotWordsFilePath = Path.Combine(appDataDir, config.HotWordsFile);
+        _markerFilePath = Path.Combine(appDataDir, "hotwords-processed.marker");
 
         _promptTemplate = LoadPromptTemplate("ExtractHotwords.liquid");
     }
