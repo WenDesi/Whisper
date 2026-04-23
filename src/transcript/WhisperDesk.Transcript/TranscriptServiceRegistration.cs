@@ -10,8 +10,6 @@ public static class TranscriptServiceRegistration
         this IServiceCollection services,
         double sessionGapMinutes = 10)
     {
-        services.AddSingleton<TranscriptionLogService>();
-
         services.AddSingleton(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<TranscriptionHistoryService>>();
