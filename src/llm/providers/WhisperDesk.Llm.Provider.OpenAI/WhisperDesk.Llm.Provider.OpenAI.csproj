@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <RootNamespace>WhisperDesk.Llm.Provider.AzureOpenAI</RootNamespace>
+    <RootNamespace>WhisperDesk.Llm.Provider.OpenAI</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
