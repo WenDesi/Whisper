@@ -1,4 +1,4 @@
-namespace WhisperDesk.Core.Models;
+namespace WhisperDesk.Core.Contract;
 
 /// <summary>
 /// Describes a pipeline error with stage information.
