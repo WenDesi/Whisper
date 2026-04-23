@@ -4,7 +4,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
+    <ProjectReference Include="$(CoreRoot)WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
     <ProjectReference Include="$(SttRoot)WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
     <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
   </ItemGroup>

@@ -69,6 +69,28 @@ Follow the same pattern. Example for a future LLM module:
 | Folder under `src/` | Lowercase module name (e.g., `stt/`, `llm/`) |
 | Providers subfolder | `src/<module>/providers/` |
 
+### ProjectReference Rules
+
+**Always use path variables from `Directory.Build.props` for project references.** Never use relative paths like `..\..\` or `..\`.
+
+```xml
+<!-- CORRECT -->
+<ProjectReference Include="$(CoreRoot)WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
+<ProjectReference Include="$(SttRoot)WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
+
+<!-- WRONG — never do this -->
+<ProjectReference Include="..\WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
+```
+
+Available path variables (defined in `Directory.Build.props`):
+- `$(SrcRoot)` — `src/`
+- `$(CoreRoot)` — `src/core/`
+- `$(UiRoot)` — `src/ui/`
+- `$(SttRoot)` — `src/stt/`
+- `$(LlmRoot)` — `src/llm/`
+- `$(ServerRoot)` — `src/server/`
+- `$(ProtoRoot)` — `src/proto/`
+
 ## Build & Run
 
 ```bash
