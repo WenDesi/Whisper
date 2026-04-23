@@ -239,7 +239,8 @@ public class VolcengineSttProvider : IStreamingSttProvider
                 EnableItn = true,
                 EnablePunc = true,
                 ResultType = "single",
-                ShowUtterances = true
+                ShowUtterances = true,
+                Corpus = BuildCorpus(options)
             }
         };
 
@@ -269,6 +270,26 @@ public class VolcengineSttProvider : IStreamingSttProvider
             audioData.Span);
 
         await _webSocket!.SendAsync(frame, WebSocketMessageType.Binary, true, _sessionCts!.Token);
+    }
+
+    #endregion
+
+    #region Helpers
+
+    private static VolcengineCorpus? BuildCorpus(SttSessionOptions options)
+    {
+        if (options.PhraseHints.Count == 0)
+            return null;
+
+        var context = new VolcengineContext
+        {
+            Hotwords = options.PhraseHints
+                .Select(w => new VolcengineHotword { Word = w })
+                .ToList()
+        };
+
+        var contextJson = JsonSerializer.Serialize(context, VolcengineJsonContext.Default.VolcengineContext);
+        return new VolcengineCorpus { Context = contextJson };
     }
 
     #endregion

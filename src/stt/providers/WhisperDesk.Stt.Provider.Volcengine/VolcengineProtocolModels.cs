@@ -54,6 +54,48 @@ internal class VolcengineRequestInfo
 
     [JsonPropertyName("show_utterances")]
     public bool ShowUtterances { get; set; } = true;
+
+    [JsonPropertyName("corpus")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public VolcengineCorpus? Corpus { get; set; }
+}
+
+internal class VolcengineCorpus
+{
+    [JsonPropertyName("context")]
+    public string Context { get; set; } = "";
+}
+
+internal class VolcengineContext
+{
+    [JsonPropertyName("hotwords")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<VolcengineHotword>? Hotwords { get; set; }
+
+    [JsonPropertyName("context_type")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ContextType { get; set; }
+
+    [JsonPropertyName("context_data")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<VolcengineContextItem>? ContextData { get; set; }
+}
+
+internal class VolcengineHotword
+{
+    [JsonPropertyName("word")]
+    public string Word { get; set; } = "";
+}
+
+internal class VolcengineContextItem
+{
+    [JsonPropertyName("text")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Text { get; set; }
+
+    [JsonPropertyName("image_url")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ImageUrl { get; set; }
 }
 
 internal class VolcengineResponse
@@ -112,4 +154,5 @@ internal class VolcengineUtterance
 
 [JsonSerializable(typeof(VolcengineRequest))]
 [JsonSerializable(typeof(VolcengineResponse))]
+[JsonSerializable(typeof(VolcengineContext))]
 internal partial class VolcengineJsonContext : JsonSerializerContext;

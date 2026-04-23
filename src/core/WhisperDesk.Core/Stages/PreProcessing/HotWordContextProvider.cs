@@ -14,16 +14,20 @@ public class HotWordContextProvider : IContextProvider
     private readonly ILogger<HotWordContextProvider> _logger;
     private readonly string _hotWordsFilePath;
 
+    private List<string> _cachedWords = [];
+    private DateTime _cachedLastWriteUtc;
+
     public string Name => "Hot Words";
 
     public HotWordContextProvider(ILogger<HotWordContextProvider> logger, PipelineConfig config)
     {
         _logger = logger;
 
-        // Resolve hot words file relative to exe directory
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath
-            ?? System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!;
-        _hotWordsFilePath = Path.Combine(exeDir, config.HotWordsFile);
+        var appDataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WhisperDesk");
+        Directory.CreateDirectory(appDataDir);
+        _hotWordsFilePath = Path.Combine(appDataDir, config.HotWordsFile);
     }
 
     public async Task ContributeAsync(SessionContextBuilder builder, CancellationToken ct = default)
@@ -36,6 +40,15 @@ public class HotWordContextProvider : IContextProvider
 
         try
         {
+            var lastWrite = File.GetLastWriteTimeUtc(_hotWordsFilePath);
+
+            if (_cachedWords.Count > 0 && lastWrite == _cachedLastWriteUtc)
+            {
+                builder.AddPhraseHints(_cachedWords);
+                _logger.LogDebug("[HotWords] Using cached {Count} hot words.", _cachedWords.Count);
+                return;
+            }
+
             var json = await File.ReadAllTextAsync(_hotWordsFilePath, ct);
             var doc = JsonDocument.Parse(json);
 
@@ -46,6 +59,9 @@ public class HotWordContextProvider : IContextProvider
                     .Select(e => e.GetString()!)
                     .Where(s => !string.IsNullOrWhiteSpace(s))
                     .ToList();
+
+                _cachedWords = words;
+                _cachedLastWriteUtc = lastWrite;
 
                 builder.AddPhraseHints(words);
                 _logger.LogInformation("[HotWords] Loaded {Count} hot words from {Path}.", words.Count, _hotWordsFilePath);

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Stt;
 using WhisperDesk.Llm;
+using WhisperDesk.Jobs;
 using WhisperDesk.Transcript;
 
 namespace WhisperDesk.Server;
@@ -63,6 +64,8 @@ public class WhisperDeskServer : IDisposable
         builder.Services.AddLogging(b =>
         {
             b.AddConsole();
+            b.AddProvider(new WhisperDesk.Logging.FileLoggerProvider(
+                WhisperDesk.Logging.FileLoggerProvider.GetLogPath("server")));
             b.SetMinimumLevel(LogLevel.Debug);
         });
 
@@ -70,6 +73,7 @@ public class WhisperDeskServer : IDisposable
         builder.Services.AddLlmProvider(pipelineConfig.LlmProvider, config);
         builder.Services.AddTranscriptServices(pipelineConfig.HistorySessionGapMinutes);
         builder.Services.AddWhisperDeskPipeline(pipelineConfig, config);
+        builder.Services.AddOfflineJobs();
 
         builder.Services.AddSingleton(shutdownCts);
         builder.Services.AddGrpc();

@@ -15,6 +15,8 @@
     <TranscriptRoot>$(SrcRoot)transcript\</TranscriptRoot>
     <ServerRoot>$(SrcRoot)server\</ServerRoot>
     <ProtoRoot>$(SrcRoot)proto\</ProtoRoot>
+    <JobsRoot>$(SrcRoot)jobs\</JobsRoot>
+    <SharedRoot>$(SrcRoot)shared\</SharedRoot>
   </PropertyGroup>
 
   <PropertyGroup>

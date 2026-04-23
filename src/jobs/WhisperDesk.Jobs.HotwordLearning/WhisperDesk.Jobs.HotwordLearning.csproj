@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>WhisperDesk.Jobs.HotwordLearning</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(CoreRoot)WhisperDesk.Core\WhisperDesk.Core.csproj" />
+    <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
+    <ProjectReference Include="$(TranscriptRoot)WhisperDesk.Transcript.Contract\WhisperDesk.Transcript.Contract.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Fluid.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Prompts\*.liquid" />
+  </ItemGroup>
+</Project>
