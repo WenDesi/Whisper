@@ -64,6 +64,8 @@ public class WhisperDeskServer : IDisposable
         builder.Services.AddLogging(b =>
         {
             b.AddConsole();
+            b.AddProvider(new WhisperDesk.Logging.FileLoggerProvider(
+                WhisperDesk.Logging.FileLoggerProvider.GetLogPath("server")));
             b.SetMinimumLevel(LogLevel.Debug);
         });
 

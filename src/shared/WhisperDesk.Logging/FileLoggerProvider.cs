@@ -1,12 +1,8 @@
 using System.Collections.Concurrent;
-using System.IO;
 using Microsoft.Extensions.Logging;
 
-namespace WhisperDesk.Services;
+namespace WhisperDesk.Logging;
 
-/// <summary>
-/// Simple file logger that writes all log messages to a fixed file.
-/// </summary>
 public sealed class FileLoggerProvider : ILoggerProvider
 {
     private readonly string _filePath;
@@ -19,14 +15,21 @@ public sealed class FileLoggerProvider : ILoggerProvider
         _filePath = filePath;
         _minLevel = minLevel;
 
-        // Ensure directory exists
         var dir = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
-        // Write startup marker
         WriteToFile($"========== WhisperDesk started at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==========");
         WriteToFile($"Log file: {filePath}");
+    }
+
+    public static string GetLogPath(string component)
+    {
+        var logsDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WhisperDesk", "logs");
+        Directory.CreateDirectory(logsDir);
+        return Path.Combine(logsDir, $"{component}.log");
     }
 
     public ILogger CreateLogger(string categoryName)
@@ -55,7 +58,6 @@ public sealed class FileLoggerProvider : ILoggerProvider
 
         public FileLogger(string category, FileLoggerProvider provider, LogLevel minLevel)
         {
-            // Shorten category name: "WhisperDesk.Services.AzureSpeechService" -> "AzureSpeechService"
             _category = category.Contains('.') ? category[(category.LastIndexOf('.') + 1)..] : category;
             _provider = provider;
             _minLevel = minLevel;

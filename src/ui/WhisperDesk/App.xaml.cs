@@ -113,13 +113,11 @@ public partial class App : Application
         services.AddSingleton(settings.Hotkeys);
         services.AddSingleton(settings.Audio);
 
-        var logFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WhisperDesk", "whisperdesk.log");
         services.AddLogging(builder =>
         {
             builder.AddConsole();
-            builder.AddProvider(new FileLoggerProvider(logFilePath));
+            builder.AddProvider(new WhisperDesk.Logging.FileLoggerProvider(
+                WhisperDesk.Logging.FileLoggerProvider.GetLogPath("ui")));
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
