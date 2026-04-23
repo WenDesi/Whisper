@@ -28,7 +28,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NAudio" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="MaterialDesignThemes" />
     <PackageReference Include="MaterialDesignColors" />
@@ -43,7 +42,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="$(CoreRoot)WhisperDesk.Core\WhisperDesk.Core.csproj" />
+    <ProjectReference Include="$(CoreRoot)WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
     <ProjectReference Include="$(SrcRoot)server\WhisperDesk.Server\WhisperDesk.Server.csproj" />
   </ItemGroup>
 

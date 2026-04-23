@@ -1,4 +1,4 @@
-namespace WhisperDesk.Core.Models;
+namespace WhisperDesk.Core.Contract;
 
 public record PipelineResult
 {

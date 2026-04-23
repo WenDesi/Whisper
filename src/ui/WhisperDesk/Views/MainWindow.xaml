@@ -131,13 +131,6 @@
                                         HorizontalAlignment="Right"
                                         Orientation="Horizontal">
                                 <Button Style="{StaticResource MaterialDesignIconButton}"
-                                        ToolTip="Evaluate &amp; save recording"
-                                        Command="{Binding OpenEvalDialogCommand}"
-                                        IsEnabled="{Binding CanSaveRecording}"
-                                        Visibility="{Binding IsSaveRecordingVisible, Converter={StaticResource BoolToVis}}">
-                                    <materialDesign:PackIcon Kind="ClipboardEdit" />
-                                </Button>
-                                <Button Style="{StaticResource MaterialDesignIconButton}"
                                         ToolTip="Copy to clipboard"
                                         Command="{Binding CopyToClipboardCommand}">
                                     <materialDesign:PackIcon Kind="ContentCopy" />
