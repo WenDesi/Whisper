@@ -8,7 +8,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Stt.Contract;
 
-namespace WhisperDesk.Stt.Volcengine;
+namespace WhisperDesk.Stt.Provider.Volcengine;
 
 public class VolcengineSttProvider : IStreamingSttProvider
 {

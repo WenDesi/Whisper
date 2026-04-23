@@ -1,4 +1,4 @@
-namespace WhisperDesk.Stt.Volcengine;
+namespace WhisperDesk.Stt.Provider.Volcengine;
 
 public class VolcengineSttConfig
 {

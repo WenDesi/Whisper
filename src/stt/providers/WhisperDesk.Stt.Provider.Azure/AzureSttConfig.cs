@@ -1,4 +1,4 @@
-namespace WhisperDesk.Stt.Azure;
+namespace WhisperDesk.Stt.Provider.Azure;
 
 public class AzureSttConfig
 {

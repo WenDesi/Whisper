@@ -7,12 +7,12 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
+    <ProjectReference Include="..\providers\WhisperDesk.Stt.Provider.Azure\WhisperDesk.Stt.Provider.Azure.csproj" />
+    <ProjectReference Include="..\providers\WhisperDesk.Stt.Provider.Volcengine\WhisperDesk.Stt.Provider.Volcengine.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.42.0" />
   </ItemGroup>
 </Project>

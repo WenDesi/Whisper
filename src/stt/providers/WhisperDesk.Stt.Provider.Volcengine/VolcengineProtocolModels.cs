@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace WhisperDesk.Stt.Volcengine;
+namespace WhisperDesk.Stt.Provider.Volcengine;
 
 internal class VolcengineRequest
 {

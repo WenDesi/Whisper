@@ -4,7 +4,7 @@ using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Stt.Contract;
 
-namespace WhisperDesk.Stt.Azure;
+namespace WhisperDesk.Stt.Provider.Azure;
 
 public class AzureSttProvider : IStreamingSttProvider
 {

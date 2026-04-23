@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WhisperDesk.Stt.Contract;
-using WhisperDesk.Stt.Azure;
-using WhisperDesk.Stt.Volcengine;
+using WhisperDesk.Stt.Provider.Azure;
+using WhisperDesk.Stt.Provider.Volcengine;
 
 namespace WhisperDesk.Stt;
 

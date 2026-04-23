@@ -12,7 +12,10 @@ Each domain module lives in its own folder under `src/`, containing a **Contract
 src/
 ├── stt/
 │   ├── WhisperDesk.Stt.Contract/    # IStreamingSttProvider, SttResults, SttSessionOptions, AudioFormat
-│   └── WhisperDesk.Stt/             # Azure, Volcengine implementations + DI registration
+│   ├── providers/
+│   │   ├── WhisperDesk.Stt.Provider.Azure/       # Azure Speech implementation
+│   │   └── WhisperDesk.Stt.Provider.Volcengine/  # Volcengine Doubao implementation
+│   └── WhisperDesk.Stt/             # DI assembly — references all providers, exposes AddSttProvider()
 ├── WhisperDesk.Core/                # Pipeline orchestration, services, non-STT logic
 └── WhisperDesk/                     # WPF UI layer
 ```
@@ -34,7 +37,9 @@ WhisperDesk.Core
   → WhisperDesk.Stt.Contract   (interfaces only)
 
 WhisperDesk.Stt
-  → WhisperDesk.Stt.Contract   (implements the interfaces)
+  → WhisperDesk.Stt.Contract
+  → WhisperDesk.Stt.Provider.Azure      → WhisperDesk.Stt.Contract
+  → WhisperDesk.Stt.Provider.Volcengine  → WhisperDesk.Stt.Contract
 ```
 
 ### Adding a New Module
@@ -42,20 +47,23 @@ WhisperDesk.Stt
 Follow the same pattern. Example for a future LLM module:
 
 1. Create `src/llm/WhisperDesk.Llm.Contract/` — interfaces (`ILlmProvider`), data models
-2. Create `src/llm/WhisperDesk.Llm/` — implementations (AzureOpenAI, etc.) + `LlmServiceRegistration`
-3. Core references `WhisperDesk.Llm.Contract`
-4. UI references both `WhisperDesk.Llm.Contract` and `WhisperDesk.Llm`, calls `services.AddLlmProvider(...)`
+2. Create `src/llm/providers/WhisperDesk.Llm.Provider.AzureOpenAI/` — implementation
+3. Create `src/llm/WhisperDesk.Llm/` — DI assembly, references Contract + all providers
+4. Core references `WhisperDesk.Llm.Contract`
+5. UI references `WhisperDesk.Llm`, calls `services.AddLlmProvider(...)`
 
 ### Naming Conventions
 
 | Item | Convention |
 |------|-----------|
 | Contract project | `WhisperDesk.<Module>.Contract` |
-| Implementation project | `WhisperDesk.<Module>` |
+| Provider project | `WhisperDesk.<Module>.Provider.<Name>` |
+| Assembly project | `WhisperDesk.<Module>` (DI composition) |
 | Namespace | Matches project name |
-| DI extension class | `<Module>ServiceRegistration` in the implementation project |
+| DI extension class | `<Module>ServiceRegistration` in the assembly project |
 | DI extension method | `services.Add<Module>Provider(...)` |
 | Folder under `src/` | Lowercase module name (e.g., `stt/`, `llm/`) |
+| Providers subfolder | `src/<module>/providers/` |
 
 ## Build & Run
 
