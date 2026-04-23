@@ -15,8 +15,4 @@ public record PipelineResult
     public string Language { get; init; } = "zh";
 
     public string? SourceFile { get; init; }
-
-    public string SttProvider { get; init; } = "";
-
-    public string LlmProvider { get; init; } = "";
 }

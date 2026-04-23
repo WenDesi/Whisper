@@ -3,7 +3,6 @@ using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Stt.Contract;
 using WhisperDesk.Core.Services;
-using WhisperDesk.Llm.Contract;
 using WhisperDesk.Transcript.Models;
 using WhisperDesk.Transcript.Services;
 
@@ -26,7 +25,6 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
     private readonly AudioDeviceService _audioDeviceService;
     private readonly TranscriptionHistoryService _historyService;
-    private readonly ILlmProvider? _llmProvider;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
@@ -61,8 +59,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         AudioDeviceService audioDeviceService,
         TranscriptionHistoryService historyService,
         IEnumerable<IContextProvider> contextProviders,
-        IEnumerable<IPostProcessingStage> postProcessingStages,
-        ILlmProvider? llmProvider = null)
+        IEnumerable<IPostProcessingStage> postProcessingStages)
     {
         _logger = logger;
         _config = config;
@@ -72,7 +69,6 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _historyService = historyService;
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
-        _llmProvider = llmProvider;
     }
 
     public async Task StartSessionAsync(CancellationToken ct = default)
@@ -201,9 +197,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
             {
                 RawTranscript = rawTranscript,
                 ProcessedText = processedText,
-                Language = _config.Language,
-                SttProvider = _sttProvider.Name,
-                LlmProvider = _llmProvider?.Name ?? ""
+                Language = _config.Language
             };
 
             State = PipelineState.Completed;
@@ -218,8 +212,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 RawText = result.RawTranscript,
                 ProcessedText = result.ProcessedText,
                 Source = result.SourceFile ?? "microphone",
-                SttProvider = result.SttProvider,
-                LlmProvider = result.LlmProvider
+                SttProvider = _config.SttProvider,
+                LlmProvider = _config.LlmProvider
             };
             _ = _historyService.WriteEntryAsync(entry);
 
