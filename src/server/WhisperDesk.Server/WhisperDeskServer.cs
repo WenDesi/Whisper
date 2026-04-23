@@ -99,7 +99,16 @@ public class WhisperDeskServer : IDisposable
 
     public void Stop()
     {
-        _app.StopAsync().GetAwaiter().GetResult();
+        try
+        {
+            _app.StopAsync()
+                .WaitAsync(TimeSpan.FromSeconds(5))
+                .GetAwaiter().GetResult();
+        }
+        catch (TimeoutException)
+        {
+            // Kestrel didn't stop in time — force exit
+        }
     }
 
     public void Dispose()

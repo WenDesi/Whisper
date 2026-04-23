@@ -177,14 +177,20 @@ public partial class App : Application
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();
 
-        _server?.Dispose();
-        _singleInstanceMutex?.ReleaseMutex();
-        _singleInstanceMutex?.Dispose();
-
+        // Dispose UI services first (cancels gRPC subscription stream)
         if (_serviceProvider is IDisposable disposable)
         {
             disposable.Dispose();
         }
+
+        // Then stop the server on a background thread to avoid UI deadlock
+        if (_server != null)
+        {
+            Task.Run(() => _server.Dispose()).Wait(TimeSpan.FromSeconds(5));
+        }
+
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
 
         Shutdown();
     }
