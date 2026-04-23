@@ -66,6 +66,7 @@ public sealed class HotwordLearningJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("[HotwordLearning] Job started. Waiting 10s before first cycle.");
         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -74,7 +75,12 @@ public sealed class HotwordLearningJob : BackgroundService
             {
                 if (HasHistoryChanged())
                 {
+                    _logger.LogDebug("[HotwordLearning] History change detected, running cycle.");
                     await RunCycleAsync(stoppingToken);
+                }
+                else
+                {
+                    _logger.LogDebug("[HotwordLearning] No history changes.");
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -88,6 +94,8 @@ public sealed class HotwordLearningJob : BackgroundService
 
             await Task.Delay(Interval, stoppingToken);
         }
+
+        _logger.LogInformation("[HotwordLearning] Job stopped.");
     }
 
     private bool HasHistoryChanged()
@@ -112,6 +120,8 @@ public sealed class HotwordLearningJob : BackgroundService
     {
         var historyDir = _historyService.GetHistoryDirectory();
         var markerTimestamp = ReadMarkerTimestamp();
+        _logger.LogDebug("[HotwordLearning] Marker timestamp: {Marker}", markerTimestamp);
+
         var contextCutoff = markerTimestamp > DateTime.MinValue + ContextWindow
             ? markerTimestamp - ContextWindow
             : DateTime.MinValue;
@@ -119,6 +129,8 @@ public sealed class HotwordLearningJob : BackgroundService
         var allFiles = Directory.GetFiles(historyDir, "*.jsonl")
             .OrderBy(f => f)
             .ToList();
+
+        _logger.LogDebug("[HotwordLearning] Found {Count} history files.", allFiles.Count);
 
         if (allFiles.Count == 0)
             return;
@@ -165,7 +177,10 @@ public sealed class HotwordLearningJob : BackgroundService
         }
 
         if (newEntries.Count == 0)
+        {
+            _logger.LogDebug("[HotwordLearning] No new entries since marker.");
             return;
+        }
 
         var entriesToAnalyze = contextEntries.Concat(newEntries)
             .TakeLast(MaxEntriesPerSession)
@@ -175,7 +190,11 @@ public sealed class HotwordLearningJob : BackgroundService
             entriesToAnalyze.Count, newEntries.Count, contextEntries.Count);
 
         var existing = await LoadExistingHotwordsAsync(ct);
+        _logger.LogDebug("[HotwordLearning] Existing hotwords: {Count}", existing.Count);
+
         var discoveredWords = await ExtractHotwordsFromSessionAsync(entriesToAnalyze, ct);
+        _logger.LogInformation("[HotwordLearning] LLM returned {Count} candidates: [{Words}]",
+            discoveredWords.Count, string.Join(", ", discoveredWords));
 
         if (discoveredWords.Count > 0)
         {
@@ -189,8 +208,13 @@ public sealed class HotwordLearningJob : BackgroundService
                 _logger.LogInformation("[HotwordLearning] Added {Count} new hotwords: {Words}",
                     newWords.Count, string.Join(", ", newWords));
             }
+            else
+            {
+                _logger.LogDebug("[HotwordLearning] All candidates already in hotwords list.");
+            }
         }
 
+        _logger.LogDebug("[HotwordLearning] Advancing marker to {Timestamp}", latestTimestamp);
         WriteMarkerTimestamp(latestTimestamp);
     }
 
