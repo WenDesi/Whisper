@@ -59,6 +59,7 @@ public class WhisperDeskServer : IDisposable
 
         var app = builder.Build();
         app.MapGrpcService<PipelineGrpcService>();
+        app.MapGrpcService<DeviceGrpcService>();
 
         app.StartAsync().GetAwaiter().GetResult();
 

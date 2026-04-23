@@ -122,7 +122,7 @@ public partial class App : Application
         });
 
         services.AddSingleton<IPipelineController>(new GrpcPipelineClient(serverAddress));
-        services.AddSingleton<AudioDeviceService>();
+        services.AddSingleton(new GrpcDeviceClient(serverAddress));
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();
         services.AddSingleton<MainViewModel>();
