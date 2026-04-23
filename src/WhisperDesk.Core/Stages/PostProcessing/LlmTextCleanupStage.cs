@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Pipeline;
-using WhisperDesk.Core.Providers.Llm;
+using WhisperDesk.Llm.Contract;
 
 namespace WhisperDesk.Core.Stages.PostProcessing;
 

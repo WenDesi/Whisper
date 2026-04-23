@@ -3,12 +3,10 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
+using WhisperDesk.Llm.Contract;
 
-namespace WhisperDesk.Core.Providers.Llm.AzureOpenAI;
+namespace WhisperDesk.Llm.Provider.AzureOpenAI;
 
-/// <summary>
-/// Azure OpenAI LLM provider. Uses the OpenAI SDK with Azure endpoint.
-/// </summary>
 public class AzureOpenAILlmProvider : ILlmProvider
 {
     private readonly ILogger<AzureOpenAILlmProvider> _logger;
