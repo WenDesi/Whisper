@@ -25,10 +25,19 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
     private WhisperDeskServer? _server;
+    private Mutex? _singleInstanceMutex;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        _singleInstanceMutex = new Mutex(true, "WhisperDesk_SingleInstance", out var isNewInstance);
+        if (!isNewInstance)
+        {
+            MessageBox.Show("WhisperDesk is already running.", "WhisperDesk", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
 
         try
         {
@@ -169,6 +178,8 @@ public partial class App : Application
         _mainWindow?.ForceClose();
 
         _server?.Dispose();
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
 
         if (_serviceProvider is IDisposable disposable)
         {
