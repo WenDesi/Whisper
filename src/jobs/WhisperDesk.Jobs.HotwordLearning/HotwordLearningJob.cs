@@ -12,6 +12,7 @@ namespace WhisperDesk.Jobs.HotwordLearning;
 public sealed class HotwordLearningJob : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ContextWindow = TimeSpan.FromSeconds(30);
     private const int MaxEntriesPerSession = 50;
 
     private static readonly JsonSerializerOptions CamelCase = new()
@@ -104,41 +105,33 @@ public sealed class HotwordLearningJob : BackgroundService
     private async Task RunCycleAsync(CancellationToken ct)
     {
         var historyDir = _historyService.GetHistoryDirectory();
-        var markerTime = ReadMarkerTimestamp();
+        var marker = ReadMarker();
 
-        var newFiles = Directory.GetFiles(historyDir, "*.jsonl")
-            .Where(f => File.GetLastWriteTimeUtc(f) > markerTime)
-            .OrderBy(f => File.GetLastWriteTimeUtc(f))
+        var allFiles = Directory.GetFiles(historyDir, "*.jsonl")
+            .OrderBy(f => f)
             .ToList();
 
-        if (newFiles.Count == 0)
+        if (allFiles.Count == 0)
             return;
 
-        // Skip the most recent file — it may still be receiving new entries
-        var completedFiles = newFiles.Count > 1 ? newFiles.SkipLast(1).ToList() : [];
-        if (completedFiles.Count == 0)
-            return;
+        // Read all entries from all files, tracking file + line position
+        var allEntries = new List<(string File, int Line, TranscriptionHistoryEntry Entry)>();
 
-        var entries = new List<string>();
-        var latestFileTime = markerTime;
-
-        foreach (var file in completedFiles)
+        foreach (var file in allFiles)
         {
-            var fileTime = File.GetLastWriteTimeUtc(file);
-            if (fileTime > latestFileTime) latestFileTime = fileTime;
-
             try
             {
                 var lines = await File.ReadAllLinesAsync(file, ct);
-                foreach (var line in lines)
+                var fileName = Path.GetFileName(file);
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    if (string.IsNullOrWhiteSpace(lines[i])) continue;
                     try
                     {
-                        var entry = JsonSerializer.Deserialize<TranscriptionHistoryEntry>(line, CamelCase);
+                        var entry = JsonSerializer.Deserialize<TranscriptionHistoryEntry>(lines[i], CamelCase);
                         if (entry is not null && !string.IsNullOrWhiteSpace(entry.RawText))
                         {
-                            entries.Add(entry.RawText);
+                            allEntries.Add((fileName, i, entry));
                         }
                     }
                     catch (JsonException) { }
@@ -146,42 +139,74 @@ public sealed class HotwordLearningJob : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[HotwordLearning] Failed to read history file: {File}", file);
+                _logger.LogWarning(ex, "[HotwordLearning] Failed to read: {File}", file);
             }
         }
 
-        if (entries.Count == 0)
-        {
-            WriteMarkerTimestamp(latestFileTime);
+        if (allEntries.Count == 0)
             return;
+
+        // Find where the marker is in the entries list
+        var markerIndex = -1;
+        if (marker != null)
+        {
+            for (int i = allEntries.Count - 1; i >= 0; i--)
+            {
+                if (allEntries[i].File == marker.File && allEntries[i].Line == marker.Line)
+                {
+                    markerIndex = i;
+                    break;
+                }
+            }
         }
 
-        if (entries.Count > MaxEntriesPerSession)
-            entries = entries.TakeLast(MaxEntriesPerSession).ToList();
+        // New entries start after the marker
+        var newStartIndex = markerIndex + 1;
+        if (newStartIndex >= allEntries.Count)
+            return;
 
-        _logger.LogInformation("[HotwordLearning] Analyzing {Count} transcripts for hotword candidates.", entries.Count);
+        // Include context: entries from up to 30s before the first new entry
+        var firstNewTimestamp = allEntries[newStartIndex].Entry.Timestamp;
+        var contextCutoff = firstNewTimestamp - ContextWindow;
+
+        var contextStartIndex = newStartIndex;
+        for (int i = newStartIndex - 1; i >= 0; i--)
+        {
+            if (allEntries[i].Entry.Timestamp >= contextCutoff)
+                contextStartIndex = i;
+            else
+                break;
+        }
+
+        var entriesToAnalyze = allEntries
+            .Skip(contextStartIndex)
+            .TakeLast(MaxEntriesPerSession)
+            .Select(e => e.Entry.RawText)
+            .ToList();
+
+        _logger.LogInformation("[HotwordLearning] Analyzing {Count} transcripts ({New} new + context).",
+            entriesToAnalyze.Count, allEntries.Count - newStartIndex);
 
         var existing = await LoadExistingHotwordsAsync(ct);
-        var discoveredWords = await ExtractHotwordsFromSessionAsync(entries, existing, ct);
+        var discoveredWords = await ExtractHotwordsFromSessionAsync(entriesToAnalyze, existing, ct);
 
-        if (discoveredWords.Count == 0)
+        if (discoveredWords.Count > 0)
         {
-            WriteMarkerTimestamp(latestFileTime);
-            return;
+            var existingSet = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
+            var newWords = discoveredWords.Where(w => !existingSet.Contains(w)).ToList();
+
+            if (newWords.Count > 0)
+            {
+                var merged = existing.Concat(newWords).ToList();
+                await WriteHotwordsAtomicAsync(merged, ct);
+                _logger.LogInformation("[HotwordLearning] Added {Count} new hotwords: {Words}",
+                    newWords.Count, string.Join(", ", newWords));
+            }
         }
 
-        var existingSet = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
-        var newWords = discoveredWords.Where(w => !existingSet.Contains(w)).ToList();
-
-        if (newWords.Count > 0)
-        {
-            var merged = existing.Concat(newWords).ToList();
-            await WriteHotwordsAtomicAsync(merged, ct);
-            _logger.LogInformation("[HotwordLearning] Added {Count} new hotwords: {Words}",
-                newWords.Count, string.Join(", ", newWords));
-        }
-
-        WriteMarkerTimestamp(latestFileTime);
+        // Advance marker to the last entry we processed
+        var last = allEntries[^1];
+        WriteMarker(new ProcessingMarker { File = last.File, Line = last.Line });
     }
 
     private async Task<List<string>> ExtractHotwordsFromSessionAsync(
@@ -254,33 +279,38 @@ public sealed class HotwordLearningJob : BackgroundService
         File.Move(tempPath, _hotWordsFilePath, overwrite: true);
     }
 
-    private DateTime ReadMarkerTimestamp()
+    private ProcessingMarker? ReadMarker()
     {
         if (!File.Exists(_markerFilePath))
-            return DateTime.MinValue;
+            return null;
 
         try
         {
-            var text = File.ReadAllText(_markerFilePath).Trim();
-            return DateTime.TryParse(text, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
-                ? dt
-                : DateTime.MinValue;
+            var json = File.ReadAllText(_markerFilePath).Trim();
+            return JsonSerializer.Deserialize<ProcessingMarker>(json, CamelCase);
         }
         catch
         {
-            return DateTime.MinValue;
+            return null;
         }
     }
 
-    private void WriteMarkerTimestamp(DateTime utc)
+    private void WriteMarker(ProcessingMarker marker)
     {
         try
         {
-            File.WriteAllText(_markerFilePath, utc.ToString("O"));
+            var json = JsonSerializer.Serialize(marker, CamelCase);
+            File.WriteAllText(_markerFilePath, json);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[HotwordLearning] Failed to write marker file.");
         }
+    }
+
+    private sealed class ProcessingMarker
+    {
+        public string File { get; set; } = "";
+        public int Line { get; set; }
     }
 }
