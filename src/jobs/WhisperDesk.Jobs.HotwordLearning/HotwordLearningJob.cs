@@ -12,7 +12,7 @@ namespace WhisperDesk.Jobs.HotwordLearning;
 public sealed class HotwordLearningJob : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan ContextWindow = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ContextWindow = TimeSpan.FromMinutes(2);
     private const int MaxEntriesPerSession = 50;
 
     private static readonly JsonSerializerOptions CamelCase = new()
