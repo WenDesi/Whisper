@@ -12,6 +12,7 @@ using WhisperDesk.Stt;
 using WhisperDesk.Llm;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
+using WhisperDesk.Server;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.ViewModels;
@@ -25,14 +26,25 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
+    private Microsoft.AspNetCore.Builder.WebApplication? _grpcServer;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        _serviceProvider = services.BuildServiceProvider();
+        // 1. Build backend services (Core, STT, LLM, Pipeline)
+        var backendServices = new ServiceCollection();
+        ConfigureBackendServices(backendServices);
+        var backendProvider = backendServices.BuildServiceProvider();
+
+        // 2. Start in-process gRPC server
+        _grpcServer = GrpcServerHost.Create(backendProvider);
+        _grpcServer.StartAsync().GetAwaiter().GetResult();
+
+        // 3. Build UI services with gRPC client as IPipelineController
+        var uiServices = new ServiceCollection();
+        ConfigureUiServices(uiServices, backendProvider);
+        _serviceProvider = uiServices.BuildServiceProvider();
 
         SetupTrayIcon();
 
@@ -77,11 +89,8 @@ public partial class App : Application
         };
     }
 
-    private void ConfigureServices(IServiceCollection services)
+    private void ConfigureBackendServices(IServiceCollection services)
     {
-        // Configuration
-        // For single-file publish, AppContext.BaseDirectory points to the temp extraction dir.
-        // Use the exe's actual location so appsettings.json sits next to the exe.
         var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
         var config = new ConfigurationBuilder()
             .SetBasePath(exeDir)
@@ -92,13 +101,6 @@ public partial class App : Application
         var settings = new WhisperDeskSettings();
         config.Bind(settings);
 
-        // Register WPF-layer settings (hotkeys, recording, audio)
-        services.AddSingleton(settings);
-        services.AddSingleton(settings.Hotkeys);
-        services.AddSingleton(settings.Audio);
-        services.AddSingleton(settings.Recording);
-
-        // Logging
         var logFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "WhisperDesk", "whisperdesk.log");
@@ -109,7 +111,6 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        // Map old settings to Core config objects
         var pipelineConfig = new PipelineConfig
         {
             SttProvider = settings.Transcription.SpeechProvider,
@@ -125,23 +126,45 @@ public partial class App : Application
             }
         };
 
-        // Register STT provider (from WhisperDesk.Stt)
         services.AddSttProvider(pipelineConfig.SttProvider, config);
-
-        // Register LLM provider (from WhisperDesk.Llm)
         services.AddLlmProvider(pipelineConfig.LlmProvider, config);
-
-        // Register Core pipeline services
         services.AddWhisperDeskPipeline(pipelineConfig, config);
+    }
 
-        // WPF-only services
+    private void ConfigureUiServices(IServiceCollection services, IServiceProvider backendProvider)
+    {
+        var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
+        var config = new ConfigurationBuilder()
+            .SetBasePath(exeDir)
+            .AddJsonFile("appsettings.json", optional: false)
+            .AddJsonFile("appsettings.Development.json", optional: true)
+            .Build();
+
+        var settings = new WhisperDeskSettings();
+        config.Bind(settings);
+
+        services.AddSingleton(settings);
+        services.AddSingleton(settings.Hotkeys);
+        services.AddSingleton(settings.Audio);
+        services.AddSingleton(settings.Recording);
+
+        var logFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WhisperDesk", "whisperdesk.log");
+        services.AddLogging(builder =>
+        {
+            builder.AddConsole();
+            builder.AddProvider(new FileLoggerProvider(logFilePath));
+            builder.SetMinimumLevel(LogLevel.Debug);
+        });
+
+        // IPipelineController via gRPC client
+        var client = new GrpcPipelineClient(GrpcServerHost.Address);
+        services.AddSingleton<IPipelineController>(client);
+
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();
-
-        // ViewModels
         services.AddSingleton<MainViewModel>();
-
-        // Views
         services.AddSingleton<MainWindow>();
     }
 
@@ -192,6 +215,8 @@ public partial class App : Application
         _trayIcon?.Dispose();
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();
+
+        _grpcServer?.StopAsync().GetAwaiter().GetResult();
 
         if (_serviceProvider is IDisposable disposable)
         {
