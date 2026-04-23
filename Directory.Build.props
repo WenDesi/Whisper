@@ -12,6 +12,7 @@
     <UiRoot>$(SrcRoot)ui\</UiRoot>
     <SttRoot>$(SrcRoot)stt\</SttRoot>
     <LlmRoot>$(SrcRoot)llm\</LlmRoot>
+    <TranscriptRoot>$(SrcRoot)transcript\</TranscriptRoot>
     <ServerRoot>$(SrcRoot)server\</ServerRoot>
     <ProtoRoot>$(SrcRoot)proto\</ProtoRoot>
   </PropertyGroup>

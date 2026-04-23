@@ -112,10 +112,13 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
 
     private static PipelineResultDto MapResult(PipelineResult result) => new()
     {
+        Id = result.Id,
         RawTranscript = result.RawTranscript,
         ProcessedText = result.ProcessedText,
         AudioDurationTicks = result.AudioDuration.Ticks,
         TimestampTicks = result.Timestamp.Ticks,
-        Language = result.Language ?? ""
+        Language = result.Language ?? "",
+        SttProvider = result.SttProvider,
+        LlmProvider = result.LlmProvider
     };
 }
