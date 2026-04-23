@@ -96,11 +96,15 @@ public sealed class HotwordLearningJob : BackgroundService
         if (!Directory.Exists(historyDir))
             return false;
 
-        var dirWriteUtc = Directory.GetLastWriteTimeUtc(historyDir);
-        if (dirWriteUtc <= _lastHistoryDirWriteUtc)
+        var latestFileWrite = Directory.GetFiles(historyDir, "*.jsonl")
+            .Select(f => File.GetLastWriteTimeUtc(f))
+            .DefaultIfEmpty(DateTime.MinValue)
+            .Max();
+
+        if (latestFileWrite <= _lastHistoryDirWriteUtc)
             return false;
 
-        _lastHistoryDirWriteUtc = dirWriteUtc;
+        _lastHistoryDirWriteUtc = latestFileWrite;
         return true;
     }
 
