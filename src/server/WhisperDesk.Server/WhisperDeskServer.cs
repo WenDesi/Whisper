@@ -105,7 +105,7 @@ public class WhisperDeskServer : IDisposable
 
     public void Stop()
     {
-        _shutdownCts.Cancel();
+        SignalShutdown();
         try
         {
             _app.StopAsync()
