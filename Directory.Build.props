@@ -1,5 +1,17 @@
 <Project>
   <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Module paths">
+    <SrcRoot>$(MSBuildThisFileDirectory)src\</SrcRoot>
+    <SttRoot>$(SrcRoot)stt\</SttRoot>
+    <LlmRoot>$(SrcRoot)llm\</LlmRoot>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <!-- Redirect build artifacts to repo-level build/ directory.
          Required for WPF projects in flattened directories (src/, tests/)
          to prevent temp project from scanning obj/ generated files. -->

@@ -1,15 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>WhisperDesk.Llm.Provider.AzureOpenAI</RootNamespace>
   </PropertyGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\..\WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
+    <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
   </ItemGroup>
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
-    <PackageReference Include="OpenAI" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="OpenAI" />
   </ItemGroup>
 </Project>

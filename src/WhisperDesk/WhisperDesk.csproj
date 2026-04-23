@@ -3,8 +3,6 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>WhisperDesk</AssemblyName>
@@ -14,73 +12,38 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <!-- ============================================================
-       Publish configuration: self-contained, single-file executable
-       Run: dotnet publish -c Release  (or use build-release.ps1)
-       ============================================================ -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <!-- Self-contained: bundle .NET runtime so users don't need to install it -->
     <SelfContained>true</SelfContained>
-
-    <!-- Single-file: pack managed assemblies into one exe -->
     <PublishSingleFile>true</PublishSingleFile>
-
-    <!-- Include native DLLs inside the single exe (extracted at first run) -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-
-    <!-- Include all content in the single file by default -->
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
-
-    <!-- ReadyToRun: ahead-of-time compilation for faster startup -->
     <PublishReadyToRun>true</PublishReadyToRun>
-
-    <!--
-      Trimming: WPF, DI, MaterialDesign, and Azure SDK rely heavily on reflection.
-      Full trimming breaks them. Disable trimming to keep things reliable.
-      Trade-off: ~30-50 MB larger, but zero runtime surprises.
-    -->
     <PublishTrimmed>false</PublishTrimmed>
-
-    <!-- Compress the single-file bundle for smaller download -->
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Audio recording (needed directly for EvalDialogViewModel playback) -->
-    <PackageReference Include="NAudio" Version="2.2.1" />
-
-    <!-- MVVM framework -->
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-
-    <!-- Material Design UI -->
-    <PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
-    <PackageReference Include="MaterialDesignColors" Version="3.1.0" />
-
-    <!-- Dependency injection -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
-
-    <!-- JSON -->
-    <PackageReference Include="System.Text.Json" Version="8.0.5" />
-
-    <!-- Global hotkeys -->
-    <PackageReference Include="H.Hooks" Version="1.4.3" />
-
-    <!-- Hardcodet NotifyIcon for system tray -->
-    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+    <PackageReference Include="NAudio" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="MaterialDesignThemes" />
+    <PackageReference Include="MaterialDesignColors" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="System.Text.Json" />
+    <PackageReference Include="H.Hooks" />
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WhisperDesk.Core\WhisperDesk.Core.csproj" />
-    <ProjectReference Include="..\stt\WhisperDesk.Stt\WhisperDesk.Stt.csproj" />
-    <ProjectReference Include="..\llm\WhisperDesk.Llm\WhisperDesk.Llm.csproj" />
+    <ProjectReference Include="$(SrcRoot)WhisperDesk.Core\WhisperDesk.Core.csproj" />
+    <ProjectReference Include="$(SttRoot)WhisperDesk.Stt\WhisperDesk.Stt.csproj" />
+    <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm\WhisperDesk.Llm.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- appsettings.json: EXCLUDED from single-file so users can edit it alongside the exe -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
@@ -93,7 +56,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
-    <!-- App icon: embedded as WPF Resource so it works in single-file publish -->
     <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
