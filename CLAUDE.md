@@ -82,7 +82,11 @@ dotnet test                                     # Run tests
 One command, no external dependencies:
 
 ```bash
+# Production (no dev secrets)
 dotnet publish src/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none
+
+# Dev (includes appsettings.Development.json with local keys — do NOT distribute)
+dotnet publish src/WhisperDesk/WhisperDesk.csproj -c Release -o publish -p:DebugType=none -p:IncludeDevConfig=true
 ```
 
 Output in `publish/`:
