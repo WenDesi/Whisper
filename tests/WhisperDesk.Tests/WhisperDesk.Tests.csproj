@@ -12,10 +12,13 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Moq" />
+    <PackageReference Include="Grpc.Net.Client" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="$(UiRoot)WhisperDesk\WhisperDesk.csproj" />
+    <ProjectReference Include="$(ServerRoot)WhisperDesk.Server\WhisperDesk.Server.csproj" />
+    <ProjectReference Include="$(ProtoRoot)WhisperDesk.Proto\WhisperDesk.Proto.csproj" />
   </ItemGroup>
 
 </Project>

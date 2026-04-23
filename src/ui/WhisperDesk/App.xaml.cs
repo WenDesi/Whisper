@@ -25,6 +25,7 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
     private WhisperDeskServer? _server;
+    private GrpcPipelineClient? _grpcClient;
     private Mutex? _singleInstanceMutex;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -47,8 +48,9 @@ public partial class App : Application
             _server = WhisperDeskServer.Start(exeDir);
 
             // 2. Build UI services
+            _grpcClient = new GrpcPipelineClient(_server.Address);
             var services = new ServiceCollection();
-            ConfigureUiServices(services, exeDir, _server.Address);
+            ConfigureUiServices(services, exeDir, _grpcClient);
             _serviceProvider = services.BuildServiceProvider();
 
             SetupTrayIcon();
@@ -97,7 +99,7 @@ public partial class App : Application
         }
     }
 
-    private static void ConfigureUiServices(IServiceCollection services, string exeDir, string serverAddress)
+    private static void ConfigureUiServices(IServiceCollection services, string exeDir, GrpcPipelineClient grpcClient)
     {
         var config = new ConfigurationBuilder()
             .SetBasePath(exeDir)
@@ -123,7 +125,7 @@ public partial class App : Application
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        services.AddSingleton<IPipelineController>(new GrpcPipelineClient(serverAddress));
+        services.AddSingleton<IPipelineController>(grpcClient);
         services.AddSingleton<AudioDeviceService>();
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<ClipboardPasteService>();
@@ -176,22 +178,21 @@ public partial class App : Application
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();
 
-        // Dispose UI services first (cancels gRPC subscription stream)
+        _grpcClient?.Dispose();
+        _server?.SignalShutdown();
+
+        var shutdownThread = new Thread(() => _server?.Dispose());
+        shutdownThread.Start();
+        shutdownThread.Join(TimeSpan.FromSeconds(5));
+
         if (_serviceProvider is IDisposable disposable)
         {
             disposable.Dispose();
         }
 
-        // Then stop the server on a background thread to avoid UI deadlock
-        if (_server != null)
-        {
-            Task.Run(() => _server.Dispose()).Wait(TimeSpan.FromSeconds(2));
-        }
-
         _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();
 
-        // Remove tray icon last so Windows refreshes immediately before process exits
         _trayIcon?.Dispose();
 
         Shutdown();

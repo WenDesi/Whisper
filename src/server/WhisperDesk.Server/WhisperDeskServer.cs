@@ -14,18 +14,27 @@ namespace WhisperDesk.Server;
 public class WhisperDeskServer : IDisposable
 {
     private readonly WebApplication _app;
+    private readonly CancellationTokenSource _shutdownCts;
 
     public string Address { get; }
 
-    private WhisperDeskServer(WebApplication app, string address)
+    public void SignalShutdown()
+    {
+        if (!_shutdownCts.IsCancellationRequested)
+            _shutdownCts.Cancel();
+    }
+
+    private WhisperDeskServer(WebApplication app, string address, CancellationTokenSource shutdownCts)
     {
         _app = app;
         Address = address;
+        _shutdownCts = shutdownCts;
     }
 
     public static WhisperDeskServer Start(string configBasePath, int port = 50051)
     {
         var address = $"http://localhost:{port}";
+        var shutdownCts = new CancellationTokenSource();
 
         var config = new ConfigurationBuilder()
             .SetBasePath(configBasePath)
@@ -42,12 +51,6 @@ public class WhisperDeskServer : IDisposable
             options.ListenLocalhost(port, o => o.Protocols = HttpProtocols.Http2);
         });
 
-        builder.Host.ConfigureHostOptions(o => o.ShutdownTimeout = TimeSpan.FromSeconds(1));
-
-        var logFilePath = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WhisperDesk", "whisperdesk.log");
-
         builder.Services.AddLogging(b =>
         {
             b.AddConsole();
@@ -59,6 +62,7 @@ public class WhisperDeskServer : IDisposable
         builder.Services.AddTranscriptServices(pipelineConfig.HistorySessionGapMinutes);
         builder.Services.AddWhisperDeskPipeline(pipelineConfig, config);
 
+        builder.Services.AddSingleton(shutdownCts);
         builder.Services.AddGrpc();
 
         var app = builder.Build();
@@ -66,7 +70,7 @@ public class WhisperDeskServer : IDisposable
 
         app.StartAsync().GetAwaiter().GetResult();
 
-        return new WhisperDeskServer(app, address);
+        return new WhisperDeskServer(app, address, shutdownCts);
     }
 
     private static PipelineConfig BuildPipelineConfig(IConfiguration config)
@@ -101,6 +105,7 @@ public class WhisperDeskServer : IDisposable
 
     public void Stop()
     {
+        _shutdownCts.Cancel();
         try
         {
             _app.StopAsync()
@@ -109,7 +114,6 @@ public class WhisperDeskServer : IDisposable
         }
         catch (TimeoutException)
         {
-            // Kestrel didn't stop in time — force exit
         }
     }
 
@@ -117,6 +121,7 @@ public class WhisperDeskServer : IDisposable
     {
         Stop();
         (_app as IDisposable)?.Dispose();
+        _shutdownCts.Dispose();
         GC.SuppressFinalize(this);
     }
 }

@@ -6,7 +6,7 @@ namespace WhisperDesk.Core.Pipeline;
 /// UI-facing contract for controlling the transcription pipeline.
 /// The WPF layer depends only on this interface — never on concrete pipeline types.
 /// </summary>
-public interface IPipelineController
+public interface IPipelineController : IDisposable
 {
     /// <summary>Start a new recording/transcription session.</summary>
     Task StartSessionAsync(string foregroundProcess = "", string foregroundWindowTitle = "", CancellationToken ct = default);
