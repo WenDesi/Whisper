@@ -1,8 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Core.Models;
+using WhisperDesk.Transcript.Models;
 
-namespace WhisperDesk.Core.Services;
+namespace WhisperDesk.Transcript.Services;
 
 public class TranscriptionHistoryService
 {

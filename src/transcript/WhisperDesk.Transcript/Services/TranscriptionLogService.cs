@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Core.Models;
+using WhisperDesk.Transcript.Models;
 
-namespace WhisperDesk.Core.Services;
+namespace WhisperDesk.Transcript.Services;
 
 public class TranscriptionLogService
 {
@@ -20,24 +20,24 @@ public class TranscriptionLogService
         _logFilePath = Path.Combine(appDataDir, logFileName);
     }
 
-    public async Task LogTranscriptionAsync(PipelineResult result)
+    public async Task LogTranscriptionAsync(TranscriptionHistoryEntry entry)
     {
         await _writeLock.WaitAsync();
         try
         {
             var logEntry = $"""
-                === [{result.Timestamp:yyyy-MM-dd HH:mm:ss}] (id={result.Id}) ===
-                Duration: {result.AudioDuration:mm\:ss}
-                Source: {result.SourceFile ?? "microphone"}
-                Language: {result.Language}
-                STT: {result.SttProvider}
-                LLM: {result.LlmProvider}
+                === [{entry.Timestamp:yyyy-MM-dd HH:mm:ss}] (id={entry.Id}) ===
+                Duration: {entry.Duration:mm\:ss}
+                Source: {entry.Source}
+                Language: {entry.Language}
+                STT: {entry.SttProvider}
+                LLM: {entry.LlmProvider}
 
                 --- Raw ---
-                {result.RawTranscript}
+                {entry.RawText}
 
                 --- Processed ---
-                {result.ProcessedText}
+                {entry.ProcessedText}
 
                 """;
 

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Stt;
 using WhisperDesk.Llm;
+using WhisperDesk.Transcript;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Models;
@@ -133,6 +134,9 @@ public partial class App : Application
 
         // Register Core pipeline services
         services.AddWhisperDeskPipeline(pipelineConfig, config);
+
+        // Register transcript services
+        services.AddTranscriptServices(pipelineConfig.HistorySessionGapMinutes);
 
         // WPF-only services
         services.AddSingleton<HotkeyService>();

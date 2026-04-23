@@ -46,6 +46,7 @@
     <ProjectReference Include="$(CoreRoot)WhisperDesk.Core\WhisperDesk.Core.csproj" />
     <ProjectReference Include="$(SttRoot)WhisperDesk.Stt\WhisperDesk.Stt.csproj" />
     <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm\WhisperDesk.Llm.csproj" />
+    <ProjectReference Include="$(TranscriptRoot)WhisperDesk.Transcript\WhisperDesk.Transcript.csproj" />
   </ItemGroup>
 
   <ItemGroup>

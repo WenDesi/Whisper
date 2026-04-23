@@ -9,6 +9,8 @@ using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Services;
+using WhisperDesk.Transcript.Models;
+using WhisperDesk.Transcript.Services;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.Views;
@@ -176,11 +178,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         });
 
-        // Log transcription (fire and forget on background)
-        _ = _logService.LogTranscriptionAsync(result);
-
-        // Write structured history entry
-        _ = _historyService.WriteEntryAsync(new TranscriptionHistoryEntry
+        // Build history entry and write to both services
+        var entry = new TranscriptionHistoryEntry
         {
             Id = result.Id,
             Timestamp = result.Timestamp,
@@ -193,7 +192,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LlmProvider = result.LlmProvider,
             ForegroundProcess = _foregroundProcess,
             ForegroundWindowTitle = _foregroundWindowTitle
-        });
+        };
+        _ = _logService.LogTranscriptionAsync(entry);
+        _ = _historyService.WriteEntryAsync(entry);
     }
 
     private void OnPipelineError(object? sender, PipelineError error)
