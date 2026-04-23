@@ -10,14 +10,18 @@ Each domain module lives in its own folder under `src/`, containing a **Contract
 
 ```
 src/
+├── core/
+│   └── WhisperDesk.Core/                # Pipeline orchestration, services, non-STT logic
+├── ui/
+│   └── WhisperDesk/                     # WPF UI layer
 ├── stt/
 │   ├── WhisperDesk.Stt.Contract/    # IStreamingSttProvider, SttResults, SttSessionOptions, AudioFormat
 │   ├── providers/
 │   │   ├── WhisperDesk.Stt.Provider.Azure/       # Azure Speech implementation
 │   │   └── WhisperDesk.Stt.Provider.Volcengine/  # Volcengine Doubao implementation
 │   └── WhisperDesk.Stt/             # DI assembly — references all providers, exposes AddSttProvider()
-├── WhisperDesk.Core/                # Pipeline orchestration, services, non-STT logic
-└── WhisperDesk/                     # WPF UI layer
+└── llm/
+    └── ...
 ```
 
 ### Dependency Rules
@@ -69,7 +73,7 @@ Follow the same pattern. Example for a future LLM module:
 
 ```bash
 dotnet build                                    # Build all
-dotnet run --project src/WhisperDesk/WhisperDesk.csproj  # Run the app
+dotnet run --project src/ui/WhisperDesk/WhisperDesk.csproj  # Run the app
 dotnet test                                     # Run tests
 dotnet publish -c Release                       # Self-contained single-file publish
 ```
