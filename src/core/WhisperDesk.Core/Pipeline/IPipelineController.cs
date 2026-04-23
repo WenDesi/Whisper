@@ -9,7 +9,7 @@ namespace WhisperDesk.Core.Pipeline;
 public interface IPipelineController
 {
     /// <summary>Start a new recording/transcription session.</summary>
-    Task StartSessionAsync(CancellationToken ct = default);
+    Task StartSessionAsync(string foregroundProcess = "", string foregroundWindowTitle = "", CancellationToken ct = default);
 
     /// <summary>Stop recording and process the captured audio through the pipeline.</summary>
     Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default);

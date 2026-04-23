@@ -17,7 +17,7 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
 
     public override async Task<StartSessionResponse> StartSession(StartSessionRequest request, ServerCallContext context)
     {
-        await _pipeline.StartSessionAsync(context.CancellationToken);
+        await _pipeline.StartSessionAsync(request.ForegroundProcess, request.ForegroundWindowTitle, context.CancellationToken);
         return new StartSessionResponse();
     }
 

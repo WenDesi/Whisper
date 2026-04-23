@@ -14,7 +14,10 @@ service PipelineService {
 }
 
 // Requests
-message StartSessionRequest {}
+message StartSessionRequest {
+  string foreground_process = 1;
+  string foreground_window_title = 2;
+}
 message StopSessionRequest {}
 message AbortSessionRequest {}
 message GetStateRequest {}

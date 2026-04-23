@@ -28,9 +28,13 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         StartEventSubscription();
     }
 
-    public async Task StartSessionAsync(CancellationToken ct = default)
+    public async Task StartSessionAsync(string foregroundProcess = "", string foregroundWindowTitle = "", CancellationToken ct = default)
     {
-        await _client.StartSessionAsync(new StartSessionRequest(), cancellationToken: ct);
+        await _client.StartSessionAsync(new StartSessionRequest
+        {
+            ForegroundProcess = foregroundProcess,
+            ForegroundWindowTitle = foregroundWindowTitle
+        }, cancellationToken: ct);
     }
 
     public async Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default)

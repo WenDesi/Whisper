@@ -28,6 +28,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
+    private string _foregroundProcess = "";
+    private string _foregroundWindowTitle = "";
 
     public PipelineState State
     {
@@ -70,7 +72,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
     }
 
-    public async Task StartSessionAsync(CancellationToken ct = default)
+    public async Task StartSessionAsync(string foregroundProcess = "", string foregroundWindowTitle = "", CancellationToken ct = default)
     {
         if (!await _sessionLock.WaitAsync(0, ct))
         {
@@ -90,6 +92,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
             {
                 _logger.LogInformation("[Pipeline] Starting session...");
                 State = PipelineState.Listening;
+                _foregroundProcess = foregroundProcess;
+                _foregroundWindowTitle = foregroundWindowTitle;
 
                 var audioFormat = new AudioFormat
                 {
@@ -212,7 +216,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 ProcessedText = result.ProcessedText,
                 Source = result.SourceFile ?? "microphone",
                 SttProvider = _config.SttProvider,
-                LlmProvider = _config.LlmProvider
+                LlmProvider = _config.LlmProvider,
+                ForegroundProcess = _foregroundProcess,
+                ForegroundWindowTitle = _foregroundWindowTitle
             };
             _ = _historyService.WriteEntryAsync(entry);
 

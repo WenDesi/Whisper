@@ -192,8 +192,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 CanSaveRecording = false;
                 PartialText = string.Empty;
+                var (proc, title) = ForegroundWindowInfo.Get();
                 _cts = new CancellationTokenSource();
-                _ = Task.Run(() => _pipeline.StartSessionAsync(_cts.Token));
+                _ = Task.Run(() => _pipeline.StartSessionAsync(proc, title, _cts.Token));
             }
         });
     }
@@ -251,8 +252,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             CanSaveRecording = false;
             PartialText = string.Empty;
+            var (proc, title) = ForegroundWindowInfo.Get();
             _cts = new CancellationTokenSource();
-            _ = Task.Run(() => _pipeline.StartSessionAsync(_cts.Token));
+            _ = Task.Run(() => _pipeline.StartSessionAsync(proc, title, _cts.Token));
         }
     }
 
