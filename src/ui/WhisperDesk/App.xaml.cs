@@ -178,17 +178,20 @@ public partial class App : Application
         _overlayWindow?.Close();
         _mainWindow?.ForceClose();
 
+        try { (_serviceProvider?.GetService<MainViewModel>() as IDisposable)?.Dispose(); } catch { }
+        try { (_serviceProvider?.GetService<HotkeyService>() as IDisposable)?.Dispose(); } catch { }
+
         _grpcClient?.Dispose();
         _server?.SignalShutdown();
 
-        var shutdownThread = new Thread(() => _server?.Dispose());
+        var shutdownThread = new Thread(() =>
+        {
+            try { _server?.Dispose(); } catch { }
+        });
         shutdownThread.Start();
         shutdownThread.Join(TimeSpan.FromSeconds(5));
 
-        if (_serviceProvider is IDisposable disposable)
-        {
-            disposable.Dispose();
-        }
+        try { (_serviceProvider as IDisposable)?.Dispose(); } catch { }
 
         _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();
