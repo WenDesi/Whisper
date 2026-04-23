@@ -293,9 +293,9 @@ public sealed class HotwordLearningJob : BackgroundService
         try
         {
             var text = File.ReadAllText(_markerFilePath).Trim();
-            return DateTime.TryParse(text, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
-                ? dt
-                : DateTime.MinValue;
+            if (DateTime.TryParse(text, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                return dt.ToLocalTime();
+            return DateTime.MinValue;
         }
         catch
         {
@@ -307,7 +307,7 @@ public sealed class HotwordLearningJob : BackgroundService
     {
         try
         {
-            File.WriteAllText(_markerFilePath, timestamp.ToString("O"));
+            File.WriteAllText(_markerFilePath, timestamp.ToLocalTime().ToString("O"));
         }
         catch (Exception ex)
         {
