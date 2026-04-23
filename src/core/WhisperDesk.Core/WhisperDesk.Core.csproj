@@ -14,5 +14,6 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="NAudio" />
+    <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 </Project>

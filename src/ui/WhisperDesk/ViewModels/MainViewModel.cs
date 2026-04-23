@@ -23,6 +23,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly HotkeyService _hotkeyService;
     private readonly ClipboardPasteService _pasteService;
     private readonly TranscriptionLogService _logService;
+    private readonly TranscriptionHistoryService _historyService;
     private readonly RecordingSettings _recordingSettings;
     private readonly AudioDeviceService _audioDeviceService;
     private readonly PipelineConfig _pipelineConfig;
@@ -30,6 +31,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ILoggerFactory _loggerFactory;
     private CancellationTokenSource? _cts;
     private bool _isStopping;
+    private string _foregroundProcess = "";
+    private string _foregroundWindowTitle = "";
 
     [ObservableProperty]
     private AppStatus _status = AppStatus.Idle;
@@ -71,6 +74,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         HotkeyService hotkeyService,
         ClipboardPasteService pasteService,
         TranscriptionLogService logService,
+        TranscriptionHistoryService historyService,
         RecordingSettings recordingSettings,
         AudioDeviceService audioDeviceService,
         PipelineConfig pipelineConfig,
@@ -82,6 +86,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _hotkeyService = hotkeyService;
         _pasteService = pasteService;
         _logService = logService;
+        _historyService = historyService;
         _recordingSettings = recordingSettings;
         _audioDeviceService = audioDeviceService;
         _pipelineConfig = pipelineConfig;
@@ -173,6 +178,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Log transcription (fire and forget on background)
         _ = _logService.LogTranscriptionAsync(result);
+
+        // Write structured history entry
+        _ = _historyService.WriteEntryAsync(new TranscriptionHistoryEntry
+        {
+            Id = result.Id,
+            Timestamp = result.Timestamp,
+            Duration = result.AudioDuration,
+            Language = result.Language,
+            RawText = result.RawTranscript,
+            ProcessedText = result.ProcessedText,
+            Source = result.SourceFile ?? "microphone",
+            SttProvider = result.SttProvider,
+            LlmProvider = result.LlmProvider,
+            ForegroundProcess = _foregroundProcess,
+            ForegroundWindowTitle = _foregroundWindowTitle
+        });
     }
 
     private void OnPipelineError(object? sender, PipelineError error)
@@ -201,6 +222,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 CanSaveRecording = false;
                 PartialText = string.Empty;
+                (_foregroundProcess, _foregroundWindowTitle) = ForegroundWindowInfo.Get();
                 _cts = new CancellationTokenSource();
                 _ = Task.Run(() => _pipeline.StartSessionAsync(_cts.Token));
             }
@@ -260,6 +282,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             CanSaveRecording = false;
             PartialText = string.Empty;
+            (_foregroundProcess, _foregroundWindowTitle) = ForegroundWindowInfo.Get();
             _cts = new CancellationTokenSource();
             _ = Task.Run(() => _pipeline.StartSessionAsync(_cts.Token));
         }

@@ -3,9 +3,6 @@ using WhisperDesk.Core.Models;
 
 namespace WhisperDesk.Core.Services;
 
-/// <summary>
-/// Thread-safe transcription logging to file.
-/// </summary>
 public class TranscriptionLogService
 {
     private readonly ILogger<TranscriptionLogService> _logger;
@@ -29,10 +26,12 @@ public class TranscriptionLogService
         try
         {
             var logEntry = $"""
-                === [{result.Timestamp:yyyy-MM-dd HH:mm:ss}] ===
+                === [{result.Timestamp:yyyy-MM-dd HH:mm:ss}] (id={result.Id}) ===
                 Duration: {result.AudioDuration:mm\:ss}
                 Source: {result.SourceFile ?? "microphone"}
                 Language: {result.Language}
+                STT: {result.SttProvider}
+                LLM: {result.LlmProvider}
 
                 --- Raw ---
                 {result.RawTranscript}

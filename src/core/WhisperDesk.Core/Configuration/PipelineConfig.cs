@@ -28,6 +28,9 @@ public class PipelineConfig
 
     /// <summary>Audio format settings.</summary>
     public AudioFormatConfig Audio { get; set; } = new();
+
+    /// <summary>Session gap in minutes for history file splitting. Default 10.</summary>
+    public double HistorySessionGapMinutes { get; set; } = 10;
 }
 
 public class AudioFormatConfig

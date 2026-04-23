@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Services;
 using WhisperDesk.Core.Stages.PostProcessing;
@@ -33,6 +34,14 @@ public static class PipelineServiceRegistration
 
         // Logging service
         services.AddSingleton<TranscriptionLogService>();
+
+        // History service
+        services.AddSingleton(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<TranscriptionHistoryService>>();
+            var gap = TimeSpan.FromMinutes(pipelineConfig.HistorySessionGapMinutes);
+            return new TranscriptionHistoryService(logger, gap);
+        });
 
         // Pipeline orchestrator
         services.AddSingleton<IPipelineController, StreamingPipeline>();

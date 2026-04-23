@@ -3,6 +3,7 @@ using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Stt.Contract;
 using WhisperDesk.Core.Services;
+using WhisperDesk.Llm.Contract;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -22,6 +23,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IEnumerable<IContextProvider> _contextProviders;
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
     private readonly AudioDeviceService _audioDeviceService;
+    private readonly ILlmProvider? _llmProvider;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
@@ -55,7 +57,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
         IStreamingSttProvider sttProvider,
         AudioDeviceService audioDeviceService,
         IEnumerable<IContextProvider> contextProviders,
-        IEnumerable<IPostProcessingStage> postProcessingStages)
+        IEnumerable<IPostProcessingStage> postProcessingStages,
+        ILlmProvider? llmProvider = null)
     {
         _logger = logger;
         _config = config;
@@ -64,6 +67,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _audioDeviceService = audioDeviceService;
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
+        _llmProvider = llmProvider;
     }
 
     public async Task StartSessionAsync(CancellationToken ct = default)
@@ -192,7 +196,9 @@ public class StreamingPipeline : IPipelineController, IDisposable
             {
                 RawTranscript = rawTranscript,
                 ProcessedText = processedText,
-                Language = _config.Language
+                Language = _config.Language,
+                SttProvider = _sttProvider.Name,
+                LlmProvider = _llmProvider?.Name ?? ""
             };
 
             State = PipelineState.Completed;
