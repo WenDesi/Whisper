@@ -1,10 +1,10 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Transcript.Models;
+using WhisperDesk.Transcript.Contract;
 
 namespace WhisperDesk.Transcript.Services;
 
-public class TranscriptionHistoryService
+public class TranscriptionHistoryService : ITranscriptionHistoryService
 {
     private readonly ILogger<TranscriptionHistoryService> _logger;
     private readonly string _historyDir;

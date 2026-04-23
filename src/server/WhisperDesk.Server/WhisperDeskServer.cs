@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Stt;
 using WhisperDesk.Llm;
+using WhisperDesk.Transcript;
 
 namespace WhisperDesk.Server;
 
@@ -53,6 +54,7 @@ public class WhisperDeskServer : IDisposable
 
         builder.Services.AddSttProvider(pipelineConfig.SttProvider, config);
         builder.Services.AddLlmProvider(pipelineConfig.LlmProvider, config);
+        builder.Services.AddTranscriptServices(pipelineConfig.HistorySessionGapMinutes);
         builder.Services.AddWhisperDeskPipeline(pipelineConfig, config);
 
         builder.Services.AddGrpc();

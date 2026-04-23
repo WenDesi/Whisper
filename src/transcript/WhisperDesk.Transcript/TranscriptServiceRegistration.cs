@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using WhisperDesk.Transcript.Contract;
 using WhisperDesk.Transcript.Services;
 
 namespace WhisperDesk.Transcript;
@@ -10,7 +11,7 @@ public static class TranscriptServiceRegistration
         this IServiceCollection services,
         double sessionGapMinutes = 10)
     {
-        services.AddSingleton(sp =>
+        services.AddSingleton<ITranscriptionHistoryService>(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<TranscriptionHistoryService>>();
             var gap = TimeSpan.FromMinutes(sessionGapMinutes);

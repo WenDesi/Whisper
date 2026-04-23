@@ -1,4 +1,4 @@
-namespace WhisperDesk.Transcript.Models;
+namespace WhisperDesk.Transcript.Contract;
 
 public record TranscriptionHistoryEntry
 {

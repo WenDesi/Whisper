@@ -4,7 +4,6 @@ using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Services;
 using WhisperDesk.Core.Stages.PostProcessing;
 using WhisperDesk.Core.Stages.PreProcessing;
-using WhisperDesk.Transcript;
 
 namespace WhisperDesk.Core.Configuration;
 
@@ -31,9 +30,6 @@ public static class PipelineServiceRegistration
         {
             services.AddSingleton<IPostProcessingStage, LlmTextCleanupStage>();
         }
-
-        // Transcript history
-        services.AddTranscriptServices(pipelineConfig.HistorySessionGapMinutes);
 
         // Pipeline orchestrator
         services.AddSingleton<IPipelineController, StreamingPipeline>();

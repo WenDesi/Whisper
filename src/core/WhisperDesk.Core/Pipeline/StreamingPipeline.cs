@@ -3,8 +3,7 @@ using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Stt.Contract;
 using WhisperDesk.Core.Services;
-using WhisperDesk.Transcript.Models;
-using WhisperDesk.Transcript.Services;
+using WhisperDesk.Transcript.Contract;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -24,7 +23,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IEnumerable<IContextProvider> _contextProviders;
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
     private readonly AudioDeviceService _audioDeviceService;
-    private readonly TranscriptionHistoryService _historyService;
+    private readonly ITranscriptionHistoryService _historyService;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
@@ -57,7 +56,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         AudioRouter audioRouter,
         IStreamingSttProvider sttProvider,
         AudioDeviceService audioDeviceService,
-        TranscriptionHistoryService historyService,
+        ITranscriptionHistoryService historyService,
         IEnumerable<IContextProvider> contextProviders,
         IEnumerable<IPostProcessingStage> postProcessingStages)
     {

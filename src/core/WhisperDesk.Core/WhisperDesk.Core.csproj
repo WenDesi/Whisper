@@ -6,7 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="$(SttRoot)WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
     <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
-    <ProjectReference Include="$(TranscriptRoot)WhisperDesk.Transcript\WhisperDesk.Transcript.csproj" />
+    <ProjectReference Include="$(TranscriptRoot)WhisperDesk.Transcript.Contract\WhisperDesk.Transcript.Contract.csproj" />
   </ItemGroup>
 
   <ItemGroup>
