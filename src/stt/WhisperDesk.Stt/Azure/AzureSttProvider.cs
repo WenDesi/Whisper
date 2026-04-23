@@ -2,15 +2,10 @@ using System.Collections.Concurrent;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Core.Models;
+using WhisperDesk.Stt.Contract;
 
-namespace WhisperDesk.Core.Providers.Stt.Azure;
+namespace WhisperDesk.Stt.Azure;
 
-/// <summary>
-/// Azure Speech Service streaming STT provider.
-/// Receives audio via PushAudio(), emits partial/final results via events.
-/// Does NOT own microphone capture -- that's AudioRouter's job.
-/// </summary>
 public class AzureSttProvider : IStreamingSttProvider
 {
     private readonly ILogger<AzureSttProvider> _logger;
@@ -20,7 +15,6 @@ public class AzureSttProvider : IStreamingSttProvider
     private PushAudioInputStream? _pushStream;
     private AudioConfig? _audioConfig;
 
-    // Thread-safe: Recognized events fire from SDK background threads
     private ConcurrentQueue<string> _results = new();
     private TaskCompletionSource<bool>? _sessionTcs;
     private CancellationTokenRegistration? _ctRegistration;
@@ -44,16 +38,13 @@ public class AzureSttProvider : IStreamingSttProvider
         _results = new ConcurrentQueue<string>();
         _sessionTcs = new TaskCompletionSource<bool>();
 
-        // Configure Speech SDK
         var speechConfig = SpeechConfig.FromSubscription(_config.SubscriptionKey, _config.Region);
 
-        // Auto-detect languages from session options
         var languages = options.Languages.Count > 0
             ? options.Languages.ToArray()
             : new[] { "zh-CN", "en-US" };
         var autoDetectConfig = AutoDetectSourceLanguageConfig.FromLanguages(languages);
 
-        // Create push stream with matching audio format
         var audioFormat = AudioStreamFormat.GetWaveFormatPCM(
             (uint)options.AudioFormat.SampleRate,
             (byte)options.AudioFormat.BitsPerSample,
@@ -62,7 +53,6 @@ public class AzureSttProvider : IStreamingSttProvider
         _audioConfig = AudioConfig.FromStreamInput(_pushStream);
         _recognizer = new SpeechRecognizer(speechConfig, autoDetectConfig, _audioConfig);
 
-        // Apply phrase hints if provider supports them
         if (options.PhraseHints.Count > 0)
         {
             var phraseList = PhraseListGrammar.FromRecognizer(_recognizer);
@@ -73,7 +63,6 @@ public class AzureSttProvider : IStreamingSttProvider
             _logger.LogInformation("[AzureStt] Added {Count} phrase hints.", options.PhraseHints.Count);
         }
 
-        // Wire events
         _recognizer.Recognizing += (_, e) =>
         {
             _logger.LogDebug("[AzureStt] Partial: {Text}", e.Result.Text);
@@ -138,7 +127,6 @@ public class AzureSttProvider : IStreamingSttProvider
     {
         _logger.LogInformation("[AzureStt] Ending session...");
 
-        // Dispose cancellation token registration
         _ctRegistration?.Dispose();
         _ctRegistration = null;
 

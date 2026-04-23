@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using NAudio.Wave;
-using WhisperDesk.Core.Models;
+using WhisperDesk.Stt.Contract;
 
 namespace WhisperDesk.Core.Pipeline;
 

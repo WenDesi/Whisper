@@ -1,9 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace WhisperDesk.Core.Providers.Stt.Volcengine;
-
-// These classes are internal so the System.Text.Json source generator can access them.
-// They are only used for Volcengine WebSocket protocol serialization.
+namespace WhisperDesk.Stt.Volcengine;
 
 internal class VolcengineRequest
 {
@@ -61,9 +58,6 @@ internal class VolcengineRequestInfo
 
 internal class VolcengineResponse
 {
-    // Actual server response structure: {"audio_info":{...},"result":{...}}
-    // Some endpoints may wrap in payload_msg -- support both.
-
     [JsonPropertyName("audio_info")]
     public VolcengineAudioInfoResponse? AudioInfo { get; set; }
 
@@ -116,10 +110,6 @@ internal class VolcengineUtterance
     public bool Definite { get; set; }
 }
 
-/// <summary>
-/// Source-generated JSON serialization context for Volcengine protocol models.
-/// Avoids reflection-based serialization for AOT compatibility and performance.
-/// </summary>
 [JsonSerializable(typeof(VolcengineRequest))]
 [JsonSerializable(typeof(VolcengineResponse))]
 internal partial class VolcengineJsonContext : JsonSerializerContext;

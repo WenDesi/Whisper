@@ -75,6 +75,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WhisperDesk.Core\WhisperDesk.Core.csproj" />
+    <ProjectReference Include="..\stt\WhisperDesk.Stt\WhisperDesk.Stt.csproj" />
   </ItemGroup>
 
   <ItemGroup>

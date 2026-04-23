@@ -3,17 +3,16 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>WhisperDesk.Core</RootNamespace>
+    <RootNamespace>WhisperDesk.Stt</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\stt\WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
+    <ProjectReference Include="..\WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
-    <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="OpenAI" Version="2.2.0" />
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.42.0" />
   </ItemGroup>
 </Project>
