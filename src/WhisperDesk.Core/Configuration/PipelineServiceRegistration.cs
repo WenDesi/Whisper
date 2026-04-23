@@ -3,9 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Providers.Llm;
 using WhisperDesk.Core.Providers.Llm.AzureOpenAI;
-using WhisperDesk.Core.Providers.Stt;
-using WhisperDesk.Core.Providers.Stt.Azure;
-using WhisperDesk.Core.Providers.Stt.Volcengine;
 using WhisperDesk.Core.Services;
 using WhisperDesk.Core.Stages.PostProcessing;
 using WhisperDesk.Core.Stages.PreProcessing;
@@ -14,7 +11,8 @@ namespace WhisperDesk.Core.Configuration;
 
 /// <summary>
 /// DI registration for WhisperDesk pipeline services.
-/// Call services.AddWhisperDeskPipeline(config, configuration) from the host application.
+/// STT provider registration is handled by WhisperDesk.Stt.SttServiceRegistration.
+/// Call services.AddSttProvider(...) from WhisperDesk.Stt before calling this.
 /// </summary>
 public static class PipelineServiceRegistration
 {
@@ -30,9 +28,6 @@ public static class PipelineServiceRegistration
 
         // Audio routing
         services.AddSingleton<AudioRouter>();
-
-        // STT provider
-        services.AddSttProvider(pipelineConfig.SttProvider, configuration);
 
         // LLM provider
         services.AddLlmProvider(pipelineConfig.LlmProvider, configuration);
@@ -53,24 +48,6 @@ public static class PipelineServiceRegistration
         services.AddSingleton<IPipelineController, StreamingPipeline>();
 
         return services;
-    }
-
-    private static void AddSttProvider(this IServiceCollection services, string provider, IConfiguration configuration)
-    {
-        switch (provider.ToLowerInvariant())
-        {
-            case "azurespeech":
-                services.BindAndRegister<AzureSttConfig>(configuration, "AzureSpeech");
-                services.AddSingleton<IStreamingSttProvider, AzureSttProvider>();
-                break;
-            case "volcengine":
-                services.BindAndRegister<VolcengineSttConfig>(configuration, "VolcengineSpeech");
-                services.AddSingleton<IStreamingSttProvider, VolcengineSttProvider>();
-                break;
-            default:
-                throw new InvalidOperationException(
-                    $"Unknown STT provider: '{provider}'. Supported: AzureSpeech, Volcengine");
-        }
     }
 
     private static void AddLlmProvider(this IServiceCollection services, string provider, IConfiguration configuration)

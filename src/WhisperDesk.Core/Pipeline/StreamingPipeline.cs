@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Models;
-using WhisperDesk.Core.Providers.Stt;
+using WhisperDesk.Stt.Contract;
 using WhisperDesk.Core.Services;
 
 namespace WhisperDesk.Core.Pipeline;

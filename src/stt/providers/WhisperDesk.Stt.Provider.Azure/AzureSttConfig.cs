@@ -1,9 +1,5 @@
-namespace WhisperDesk.Core.Providers.Stt.Azure;
+namespace WhisperDesk.Stt.Provider.Azure;
 
-/// <summary>
-/// Configuration for Azure Speech STT provider.
-/// Bound from "AzureSpeech" section in appsettings.json.
-/// </summary>
 public class AzureSttConfig
 {
     public string SubscriptionKey { get; set; } = string.Empty;

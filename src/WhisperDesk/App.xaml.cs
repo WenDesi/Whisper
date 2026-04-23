@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
+using WhisperDesk.Stt;
 using WhisperDesk.Core.Models;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Models;
@@ -123,7 +124,10 @@ public partial class App : Application
             }
         };
 
-        // Register Core pipeline services (provider configs are bound from IConfiguration internally)
+        // Register STT provider (from WhisperDesk.Stt)
+        services.AddSttProvider(pipelineConfig.SttProvider, config);
+
+        // Register Core pipeline services
         services.AddWhisperDeskPipeline(pipelineConfig, config);
 
         // WPF-only services

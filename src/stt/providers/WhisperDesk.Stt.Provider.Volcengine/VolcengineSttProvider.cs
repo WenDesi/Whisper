@@ -6,23 +6,16 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using WhisperDesk.Core.Models;
+using WhisperDesk.Stt.Contract;
 
-namespace WhisperDesk.Core.Providers.Stt.Volcengine;
+namespace WhisperDesk.Stt.Provider.Volcengine;
 
-/// <summary>
-/// Volcengine Doubao bigmodel streaming STT provider.
-/// Uses the binary WebSocket protocol at wss://openspeech.bytedance.com/api/v3/sauc/bigmodel.
-/// Receives audio via PushAudio(), emits partial/final results via events.
-/// Does NOT own microphone capture -- that's AudioRouter's job.
-/// </summary>
 public class VolcengineSttProvider : IStreamingSttProvider
 {
     private const string WebSocketEndpoint = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
 
-    // Binary protocol constants
     private const byte ProtocolVersion = 0x1;
-    private const byte HeaderSizeUnits = 0x1; // 1 * 4 = 4 bytes header
+    private const byte HeaderSizeUnits = 0x1;
     private const byte MessageTypeFullClientRequest = 0x1;
     private const byte MessageTypeAudioOnly = 0x2;
     private const byte MessageTypeServerResponse = 0x9;
@@ -41,7 +34,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
     private Task? _receiveLoopTask;
     private CancellationTokenSource? _sessionCts;
 
-    // Thread-safe result accumulation
     private ConcurrentQueue<string> _results = new();
     private TaskCompletionSource<bool>? _sessionCompleteTcs;
 
@@ -71,9 +63,8 @@ public class VolcengineSttProvider : IStreamingSttProvider
             SingleWriter = false
         });
 
-        // Connect WebSocket with auth headers
         _webSocket = new ClientWebSocket();
-        var connectId = Guid.NewGuid().ToString(); // dashed UUID
+        var connectId = Guid.NewGuid().ToString();
 
         _webSocket.Options.SetRequestHeader("x-api-key", _config.ApiKey);
         _webSocket.Options.SetRequestHeader("X-Api-Resource-Id", _config.ResourceId);
@@ -91,10 +82,8 @@ public class VolcengineSttProvider : IStreamingSttProvider
             throw;
         }
 
-        // Send the full client request (first message)
         await SendFullClientRequestAsync(options);
 
-        // Start background loops
         _receiveLoopTask = Task.Run(() => ReceiveLoopAsync(_sessionCts.Token), _sessionCts.Token);
         _sendLoopTask = Task.Run(() => SendLoopAsync(_sessionCts.Token), _sessionCts.Token);
 
@@ -105,7 +94,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
     {
         if (_audioChannel == null || _audioChannel.Writer.TryWrite(new AudioChunk(audioData.ToArray(), IsLast: false)) == false)
         {
-            // Channel full or closed -- drop the chunk (backpressure)
             _logger.LogWarning("[Volcengine] Audio channel full or closed, dropping chunk of {Size} bytes.", audioData.Length);
         }
     }
@@ -113,7 +101,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
     public void SignalEndOfAudio()
     {
         _logger.LogInformation("[Volcengine] End of audio signaled.");
-        // Write a sentinel value to signal the send loop to send the last-audio frame
         _audioChannel?.Writer.TryWrite(new AudioChunk([], IsLast: true));
         _audioChannel?.Writer.TryComplete();
     }
@@ -122,16 +109,13 @@ public class VolcengineSttProvider : IStreamingSttProvider
     {
         _logger.LogInformation("[Volcengine] Ending session...");
 
-        // Wait for the session to complete (server sends is_last_package=true)
         if (_sessionCompleteTcs != null)
         {
             await Task.WhenAny(_sessionCompleteTcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
         }
 
-        // Cancel background loops
         _sessionCts?.Cancel();
 
-        // Wait for loops to finish gracefully
         try
         {
             if (_sendLoopTask != null)
@@ -139,7 +123,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
         catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
         {
-            // Expected during shutdown
         }
 
         try
@@ -149,10 +132,8 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
         catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
         {
-            // Expected during shutdown
         }
 
-        // Close WebSocket
         await CloseWebSocketAsync();
 
         var segments = _results.ToArray();
@@ -174,7 +155,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
         catch
         {
-            // Swallow disposal errors
         }
 
         _sessionCts?.Dispose();
@@ -183,9 +163,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     #region Binary Protocol
 
-    /// <summary>
-    /// Builds a Volcengine binary frame: 4-byte header + 4-byte payload size + payload.
-    /// </summary>
     private static byte[] BuildFrame(
         byte messageType,
         byte messageTypeFlags,
@@ -193,34 +170,20 @@ public class VolcengineSttProvider : IStreamingSttProvider
         byte compression,
         ReadOnlySpan<byte> payload)
     {
-        // Header: 4 bytes
-        // Byte 0: (protocol_version << 4) | header_size_in_4byte_units
-        // Byte 1: (message_type << 4) | message_type_specific_flags
-        // Byte 2: (serialization_method << 4) | compression_type
-        // Byte 3: reserved (0x00)
-        // Then: 4-byte big-endian payload size
-        // Then: payload bytes
-
         var totalSize = 4 + 4 + payload.Length;
         var frame = new byte[totalSize];
 
         frame[0] = (byte)((ProtocolVersion << 4) | HeaderSizeUnits);
         frame[1] = (byte)((messageType << 4) | (messageTypeFlags & 0x0F));
         frame[2] = (byte)((serialization << 4) | (compression & 0x0F));
-        frame[3] = 0x00; // reserved
+        frame[3] = 0x00;
 
-        // Payload size (big-endian)
         WriteInt32BigEndian(frame.AsSpan(4), payload.Length);
-
-        // Payload
         payload.CopyTo(frame.AsSpan(8));
 
         return frame;
     }
 
-    /// <summary>
-    /// Compresses data using gzip.
-    /// </summary>
     private static byte[] GzipCompress(byte[] data)
     {
         using var output = new MemoryStream();
@@ -231,9 +194,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
         return output.ToArray();
     }
 
-    /// <summary>
-    /// Decompresses gzip data.
-    /// </summary>
     private static byte[] GzipDecompress(byte[] data)
     {
         using var input = new MemoryStream(data);
@@ -299,9 +259,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     private async Task SendAudioFrameAsync(ReadOnlyMemory<byte> audioData, bool isLast)
     {
-        // Audio-only message: type 0x2, no serialization, no compression
-        // For the last audio packet, set message_type_flags to signal end-of-audio.
-        // Convention: flags = 0x02 for last packet (sequence negative indicator)
         byte flags = isLast ? (byte)0x02 : (byte)0x00;
 
         var frame = BuildFrame(
@@ -341,7 +298,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
         catch (OperationCanceledException)
         {
-            // Expected during shutdown
         }
         catch (Exception ex)
         {
@@ -352,7 +308,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     private async Task ReceiveLoopAsync(CancellationToken ct)
     {
-        // Server responses can be up to ~64KB; use a pooled buffer
         var buffer = ArrayPool<byte>.Shared.Rent(65536);
         try
         {
@@ -379,7 +334,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
         }
         catch (OperationCanceledException)
         {
-            // Expected during shutdown
         }
         catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
         {
@@ -406,14 +360,11 @@ public class VolcengineSttProvider : IStreamingSttProvider
             return;
         }
 
-        // Parse header — header_size is in 4-byte units (byte 0 low nibble)
         var headerSizeUnits = messageBytes[0] & 0x0F;
-        var headerSize = headerSizeUnits * 4; // actual header size in bytes
+        var headerSize = headerSizeUnits * 4;
         var messageType = (byte)((messageBytes[1] >> 4) & 0x0F);
         var compression = (byte)(messageBytes[2] & 0x0F);
 
-        // Server response (0x9) and error (0xF) have a sequence number after the header.
-        // Frame layout: [header] [sequence (4 bytes)] [payload_size (4 bytes)] [payload]
         var hasSequence = messageType == MessageTypeServerResponse || messageType == MessageTypeServerError;
         var metaSize = hasSequence ? 8 : 4;
 
@@ -463,14 +414,12 @@ public class VolcengineSttProvider : IStreamingSttProvider
                 return;
             }
 
-            // Support both top-level result and payload_msg.result
             var result = response.Result ?? response.PayloadMsg?.Result;
 
             if (result != null)
             {
                 var resultText = result.Text ?? string.Empty;
 
-                // Check for definite (final) utterances
                 var hasDefiniteUtterances = false;
                 if (result.Utterances != null)
                 {
@@ -492,7 +441,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
                     }
                 }
 
-                // Emit partial result if no definite utterances and text is non-empty
                 if (!hasDefiniteUtterances && !string.IsNullOrWhiteSpace(resultText))
                 {
                     _logger.LogDebug("[Volcengine] Partial: {Text}", resultText);
@@ -500,7 +448,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
                 }
             }
 
-            // Check for session end
             if (response.IsLastPackage || (response.PayloadMsg?.IsEnd ?? false))
             {
                 _logger.LogInformation("[Volcengine] Server signaled end of session.");
@@ -556,6 +503,5 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     #endregion
 
-    /// <summary>Internal audio chunk for the send channel.</summary>
     private record AudioChunk(byte[] Data, bool IsLast);
 }
