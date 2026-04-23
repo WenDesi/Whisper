@@ -109,7 +109,6 @@ public partial class App : Application
         services.AddSingleton(settings);
         services.AddSingleton(settings.Hotkeys);
         services.AddSingleton(settings.Audio);
-        services.AddSingleton(settings.Recording);
 
         var logFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
