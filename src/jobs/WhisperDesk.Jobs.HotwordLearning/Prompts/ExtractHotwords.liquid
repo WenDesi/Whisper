@@ -12,5 +12,15 @@ Look for patterns where the user CORRECTS a previous STT misrecognition. Example
 
 Only extract words that the user explicitly corrected or clarified. Do NOT guess or infer — if there's no clear correction signal, return an empty array.
 
-Return ONLY a JSON array of words. Example: ["PR", "Kubernetes", "gRPC"]
-If no corrections found, return: []
+IMPORTANT: Your response must be ONLY a raw JSON array. No markdown, no code blocks, no explanation.
+
+Examples of CORRECT responses:
+["Azure", "Kubernetes"]
+["gRPC"]
+[]
+
+Examples of WRONG responses:
+```json
+["Azure"]
+```
+Here are the hotwords: ["Azure"]

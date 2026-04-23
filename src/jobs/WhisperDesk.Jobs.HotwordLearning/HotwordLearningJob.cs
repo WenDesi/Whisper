@@ -228,13 +228,16 @@ public sealed class HotwordLearningJob : BackgroundService
         try
         {
             var response = await _llmProvider.ProcessTextAsync(systemPrompt, numberedTranscripts, ct: ct);
+            _logger.LogDebug("[HotwordLearning] LLM raw response: {Response}", response);
 
             var jsonStart = response.IndexOf('[');
             var jsonEnd = response.LastIndexOf(']');
             if (jsonStart < 0 || jsonEnd < 0 || jsonEnd <= jsonStart)
                 return [];
 
-            var jsonArray = response[jsonStart..(jsonEnd + 1)];
+            var jsonArray = response[jsonStart..(jsonEnd + 1)].Trim();
+            _logger.LogDebug("[HotwordLearning] Extracted JSON: {Json}", jsonArray);
+
             var words = JsonSerializer.Deserialize<List<string>>(jsonArray);
 
             return words?
