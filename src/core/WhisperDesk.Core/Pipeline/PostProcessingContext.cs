@@ -1,3 +1,5 @@
+using WhisperDesk.Llm.Contract;
+
 namespace WhisperDesk.Core.Pipeline;
 
 /// <summary>
@@ -15,6 +17,6 @@ public class PostProcessingContext
     /// <summary>Phrase hints that were used for this session.</summary>
     public IReadOnlyList<string> PhraseHints { get; init; } = [];
 
-    /// <summary>Arbitrary metadata from context providers.</summary>
-    public IReadOnlyDictionary<string, object> Metadata { get; init; } = new Dictionary<string, object>();
+    /// <summary>Tool context for LLM-driven post-processing stages.</summary>
+    public required ToolContext ToolContext { get; init; }
 }

@@ -7,7 +7,7 @@ namespace WhisperDesk.Core.Contract;
 public interface IPipelineController : IDisposable
 {
     /// <summary>Start a new recording/transcription session.</summary>
-    Task StartSessionAsync(string foregroundProcess = "", string foregroundWindowTitle = "", CancellationToken ct = default);
+    Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, CancellationToken ct = default);
 
     /// <summary>Stop recording and process the captured audio through the pipeline.</summary>
     Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default);
@@ -38,4 +38,10 @@ public interface IPipelineController : IDisposable
 
     /// <summary>Fired when a pipeline error occurs.</summary>
     event EventHandler<PipelineError> ErrorOccurred;
+
+    /// <summary>Fired when the pipeline issues a local command (e.g. append/replace) that the UI must execute.</summary>
+    event EventHandler<CommandEvent> LocalCommandExecuted;
+
+    /// <summary>Deliver the UI's execution result back to the pipeline so it can unblock the waiting LLM tool call.</summary>
+    void SendCommandResult(CommandResult commandResult);
 }
