@@ -23,6 +23,7 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
+    private FloatingDockWindow? _floatingDock;
     private WhisperDeskServer? _server;
     private GrpcPipelineClient? _grpcClient;
     private Mutex? _singleInstanceMutex;
@@ -57,10 +58,20 @@ public partial class App : Application
 
             _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
             _mainWindow.Show();
+            _mainWindow.IsVisibleChanged += OnMainWindowVisibilityChanged;
 
             _overlayWindow = new OverlayWindow();
             _overlayWindow.Initialize();
             _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
+
+            _floatingDock = new FloatingDockWindow();
+            _floatingDock.OpenMainWindowRequested += (_, _) => _mainWindow?.ShowFromTray();
+            _floatingDock.SingleClicked += OnDockSingleClicked;
+            _floatingDock.DockContextMenu = BuildAppMenu();
+
+            var mainVm = _serviceProvider.GetRequiredService<MainViewModel>();
+            _floatingDock.PushToTalkStarted += (_, _) => mainVm.BeginPushToTalk();
+            _floatingDock.PushToTalkReleased += (_, _) => mainVm.EndPushToTalk();
 
             var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
             pipeline.StateChanged += (_, pipelineState) =>
@@ -73,6 +84,8 @@ public partial class App : Application
                         _trayIcon.ToolTipText = appStatus.ToTrayTooltip();
                     }
 
+                    _floatingDock?.ApplyStatus(appStatus);
+
                     if (appStatus == AppStatus.Idle)
                     {
                         _overlayWindow?.HideOverlay();
@@ -80,6 +93,17 @@ public partial class App : Application
                     else
                     {
                         _overlayWindow?.ShowForStatus(appStatus);
+                    }
+                });
+            };
+
+            pipeline.SessionCompleted += (_, result) =>
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    if (!string.IsNullOrWhiteSpace(result.ProcessedText))
+                    {
+                        _floatingDock?.ShowBubble(result.ProcessedText);
                     }
                 });
             };
@@ -130,6 +154,29 @@ public partial class App : Application
         services.AddSingleton<MainWindow>();
     }
 
+    private void OnMainWindowVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (_floatingDock == null) return;
+        if (_mainWindow?.IsVisible == true)
+        {
+            _floatingDock.Hide();
+        }
+        else
+        {
+            _floatingDock.Show();
+        }
+    }
+
+    private void OnDockSingleClicked(object? sender, EventArgs e)
+    {
+        var pipeline = _serviceProvider?.GetService<IPipelineController>();
+        var text = pipeline?.LastProcessedText;
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            _floatingDock?.ShowBubble(text);
+        }
+    }
+
     private static AppStatus MapToAppStatus(PipelineState state) => state switch
     {
         PipelineState.Idle => AppStatus.Idle,
@@ -154,20 +201,27 @@ public partial class App : Application
             ? new System.Drawing.Icon(iconStream)
             : SystemIcons.Application;
 
-        var contextMenu = new System.Windows.Controls.ContextMenu();
-
-        var showItem = new System.Windows.Controls.MenuItem { Header = "Show WhisperDesk" };
-        showItem.Click += (_, _) => _mainWindow?.ShowFromTray();
-        contextMenu.Items.Add(showItem);
-
-        contextMenu.Items.Add(new System.Windows.Controls.Separator());
-
-        var exitItem = new System.Windows.Controls.MenuItem { Header = "Exit" };
-        exitItem.Click += (_, _) => ExitApplication();
-        contextMenu.Items.Add(exitItem);
+        var contextMenu = BuildAppMenu();
 
         _trayIcon.ContextMenu = contextMenu;
         _trayIcon.TrayMouseDoubleClick += (_, _) => _mainWindow?.ShowFromTray();
+    }
+
+    private System.Windows.Controls.ContextMenu BuildAppMenu()
+    {
+        var menu = new System.Windows.Controls.ContextMenu();
+
+        var showItem = new System.Windows.Controls.MenuItem { Header = "Show WhisperDesk" };
+        showItem.Click += (_, _) => _mainWindow?.ShowFromTray();
+        menu.Items.Add(showItem);
+
+        menu.Items.Add(new System.Windows.Controls.Separator());
+
+        var exitItem = new System.Windows.Controls.MenuItem { Header = "Exit" };
+        exitItem.Click += (_, _) => ExitApplication();
+        menu.Items.Add(exitItem);
+
+        return menu;
     }
 
     private void ExitApplication()
@@ -183,6 +237,15 @@ public partial class App : Application
 
         _overlayWindow?.Close();
         _overlayWindow = null;
+        if (_floatingDock != null)
+        {
+            _floatingDock.Close();
+            _floatingDock = null;
+        }
+        if (_mainWindow != null)
+        {
+            _mainWindow.IsVisibleChanged -= OnMainWindowVisibilityChanged;
+        }
         _mainWindow?.ForceClose();
         _mainWindow = null;
 

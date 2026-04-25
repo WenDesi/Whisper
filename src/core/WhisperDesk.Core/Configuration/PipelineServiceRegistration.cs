@@ -5,6 +5,8 @@ using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Core.Services;
 using WhisperDesk.Core.Stages.PostProcessing;
 using WhisperDesk.Core.Stages.PreProcessing;
+using WhisperDesk.Core.Tools;
+using WhisperDesk.Core.Tools.Shell;
 
 namespace WhisperDesk.Core.Configuration;
 
@@ -37,6 +39,10 @@ public static class PipelineServiceRegistration
             services.AddSingleton<IPostProcessingStage, LlmTextCleanupStage>();
         }
         services.AddSingleton<IPostProcessingStage, LlmCommandStage>();
+
+        // Local tools (executed in-process, not routed through UI)
+        services.AddSingleton<IShellExecutor, WindowsShellExecutor>();
+        services.AddSingleton<ILocalTool, ShellExecutionTool>();
 
         // Pipeline orchestrator
         services.AddSingleton<IPipelineController, StreamingPipeline>();

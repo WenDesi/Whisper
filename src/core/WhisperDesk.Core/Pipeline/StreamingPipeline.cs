@@ -6,6 +6,7 @@ using WhisperDesk.Core.Services;
 using WhisperDesk.Transcript.Contract;
 using System.Collections.Concurrent;
 using WhisperDesk.Llm.Contract;
+using WhisperDesk.Core.Tools;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -26,6 +27,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
     private readonly AudioDeviceService _audioDeviceService;
     private readonly ITranscriptionHistoryService _historyService;
+    private readonly IReadOnlyDictionary<string, ILocalTool> _localTools;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
@@ -65,7 +67,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
         AudioDeviceService audioDeviceService,
         ITranscriptionHistoryService historyService,
         IEnumerable<IContextProvider> contextProviders,
-        IEnumerable<IPostProcessingStage> postProcessingStages)
+        IEnumerable<IPostProcessingStage> postProcessingStages,
+        IEnumerable<ILocalTool> localTools)
     {
         _logger = logger;
         _config = config;
@@ -75,6 +78,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _historyService = historyService;
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
+        _localTools = localTools.ToDictionary(t => t.Name, StringComparer.Ordinal);
     }
 
     public async Task StartSessionAsync(WindowTextSerializationInfo? textContext=null, CancellationToken ct = default)
@@ -361,15 +365,20 @@ public class StreamingPipeline : IPipelineController, IDisposable
             },
         };
 
-        // Only expose `read_all_context` when the user has NOT pre-selected text.
-        // When a selection exists, that selection IS the context — no need to scan the whole document.
-        if (!hasSelectedText)
-        {
-            tools.Add(new ToolDefinition
+        tools.Add(new ToolDefinition
             {
                 Name = "read_all_context",
                 Description = "Read the full text of the current editor, web page, or document. AVOID calling this tool unless absolutely necessary — it has SIDE EFFECTS: in some applications it must briefly take focus, send Ctrl+A/Ctrl+C, and may move the caret or flash the clipboard. Only call it when the user's instruction CANNOT be fulfilled from the transcript alone (e.g., 'summarize this page', 'answer based on the document'). For local edits like 'fix the grammar of what I said' or 'rephrase this sentence', do NOT call it. Returns the complete text as a string.",
                 ParametersSchema = """{"type":"object","properties":{}}"""
+            });
+
+        foreach (var localTool in _localTools.Values)
+        {
+            tools.Add(new ToolDefinition
+            {
+                Name = localTool.Name,
+                Description = localTool.Description,
+                ParametersSchema = localTool.ParametersSchema
             });
         }
 
@@ -380,6 +389,12 @@ public class StreamingPipeline : IPipelineController, IDisposable
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, toolCt);
                 _logger.LogInformation("[Pipeline] Tool execution requested: {ToolName} with arguments {Arguments}", toolName, arguments);
+
+                if (_localTools.TryGetValue(toolName, out var localTool))
+                {
+                    return await localTool.ExecuteAsync(arguments, cts.Token);
+                }
+
                 var command = toolName switch
                 {
                     "append" => new CommandEvent

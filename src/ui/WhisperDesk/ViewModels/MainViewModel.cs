@@ -197,6 +197,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
+    public void BeginPushToTalk() => OnPushToTalkPressed(this, EventArgs.Empty);
+    public void EndPushToTalk() => OnPushToTalkReleased(this, EventArgs.Empty);
+
     private void OnPushToTalkReleased(object? sender, EventArgs e)
     {
         Application.Current?.Dispatcher.InvokeAsync(() =>
