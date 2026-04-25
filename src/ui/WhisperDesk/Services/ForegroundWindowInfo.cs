@@ -52,12 +52,19 @@ public static partial class ForegroundWindowInfo
         var hwnd = GetForegroundWindow();
         if (hwnd == IntPtr.Zero)
             return null;
+        GetWindowThreadProcessId(hwnd, out var pid);
+        var process = Process.GetProcessById((int)pid);
+
         var fileFullPath = ExtractFileFullPath(hwnd);
         var selected = GetSelectedTextViaClipboard();
-         GetWindowThreadProcessId(hwnd, out var pid);
-         var process = Process.GetProcessById((int)pid);
 
-        return new WindowTextContext{Selected = selected, FileFullPath = fileFullPath, WindowHandle = hwnd, MainWindowTitle = process.MainWindowTitle};
+        return new WindowTextContext
+        {
+            Selected = selected,
+            FileFullPath = fileFullPath,
+            WindowHandle = hwnd,
+            MainWindowTitle = process.MainWindowTitle
+        };
     }
 
     public const string ErrorWindowGone = "ERROR:WINDOW_GONE";
@@ -119,6 +126,30 @@ public static partial class ForegroundWindowInfo
             AppendViaClipboard(context.WindowHandle, text);
 
         return Success;
+    }
+
+    /// <summary>
+    /// Reads the full text content of the foreground editor / page / document
+    /// captured in <paramref name="context"/>. Uses UIA TextPattern when reliable
+    /// (browsers, PDF viewers, Office) and falls back to Ctrl+A/Ctrl+C for
+    /// virtualized editors (VS Code, Visual Studio, JetBrains, etc.).
+    /// </summary>
+    public static string ReadAllContext(WindowTextContext context)
+    {
+        if (!IsWindowAlive(context.WindowHandle))
+            return string.Empty;
+
+        ActivateWindow(context.WindowHandle);
+
+        var processName = string.Empty;
+        try
+        {
+            GetWindowThreadProcessId(context.WindowHandle, out var pid);
+            processName = Process.GetProcessById((int)pid).ProcessName;
+        }
+        catch { }
+
+        return GetAllTextOfWindow(context.WindowHandle, processName);
     }
 
     /// <summary>
@@ -246,6 +277,130 @@ public static partial class ForegroundWindowInfo
             return System.Windows.Clipboard.ContainsText()
                 ? System.Windows.Clipboard.GetText()
                 : string.Empty;
+        }
+        catch { return string.Empty; }
+        finally { RestoreClipboard(previous); }
+    }
+
+    // Apps where Ctrl+A/Ctrl+C is more reliable than UIA — typically virtualized
+    // editors (Electron/canvas-based) where UIA only exposes the visible viewport.
+    private static readonly HashSet<string> ClipboardFirstProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Code",            // VS Code
+        "Code - Insiders",
+        "Cursor",
+        "windsurf",
+        "devenv",          // Visual Studio
+        "rider64",         // JetBrains Rider
+        "idea64",          // IntelliJ
+        "pycharm64",
+        "webstorm64",
+        "sublime_text",
+        "notepad++",
+    };
+
+    private static string GetAllTextOfWindow(IntPtr hwnd, string processName)
+    {
+        if (ClipboardFirstProcesses.Contains(processName))
+        {
+            var clipText = GetAllTextViaClipboard();
+            if (!string.IsNullOrEmpty(clipText)) return clipText;
+            return GetAllTextViaUia(hwnd);
+        }
+
+        var uiaText = GetAllTextViaUia(hwnd);
+        if (!string.IsNullOrEmpty(uiaText))
+            return uiaText;
+
+        return GetAllTextViaClipboard();
+    }
+
+    private static string GetAllTextViaUia(IntPtr hwnd)
+    {
+        try
+        {
+            var root = AutomationElement.FromHandle(hwnd);
+            if (root == null) return string.Empty;
+
+            // Prefer the focused element (the actual editor/document the user is in).
+            var focused = AutomationElement.FocusedElement;
+            if (focused != null && IsDescendantOf(focused, root))
+            {
+                var text = ReadTextFromElement(focused);
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+
+            // Fallback: walk descendants for the first Document control that supports TextPattern.
+            var documents = root.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document));
+            foreach (AutomationElement doc in documents)
+            {
+                var text = ReadTextFromElement(doc);
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+        }
+        catch { }
+
+        return string.Empty;
+    }
+
+    private static bool IsDescendantOf(AutomationElement element, AutomationElement ancestor)
+    {
+        try
+        {
+            var walker = TreeWalker.RawViewWalker;
+            var current = element;
+            while (current != null)
+            {
+                if (Automation.Compare(current, ancestor)) return true;
+                current = walker.GetParent(current);
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    private static string ReadTextFromElement(AutomationElement element)
+    {
+        try
+        {
+            if (element.TryGetCurrentPattern(TextPattern.Pattern, out var pattern) &&
+                pattern is TextPattern textPattern)
+            {
+                return textPattern.DocumentRange.GetText(-1) ?? string.Empty;
+            }
+
+            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var valueObj) &&
+                valueObj is ValuePattern valuePattern)
+            {
+                return valuePattern.Current.Value ?? string.Empty;
+            }
+        }
+        catch { }
+        return string.Empty;
+    }
+
+    private static string GetAllTextViaClipboard()
+    {
+        string? previous = null;
+        try
+        {
+            if (System.Windows.Clipboard.ContainsText())
+                previous = System.Windows.Clipboard.GetText();
+
+            System.Windows.Clipboard.Clear();
+            SendKeys.SendWait("^a");
+            Thread.Sleep(30);
+            SendKeys.SendWait("^c");
+            Thread.Sleep(80);
+
+            var text = System.Windows.Clipboard.ContainsText()
+                ? System.Windows.Clipboard.GetText()
+                : string.Empty;
+
+            // Collapse the selection so the caller doesn't leave the editor in a select-all state.
+            SendKeys.SendWait("{RIGHT}");
+            return text;
         }
         catch { return string.Empty; }
         finally { RestoreClipboard(previous); }

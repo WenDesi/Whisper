@@ -100,6 +100,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ForegroundWindowInfo.Append(capturedContext, a.Content),
                 { CommandType: CommandType.Replace, Payload: ReplaceCommandPayload r } =>
                     ForegroundWindowInfo.Replace(capturedContext, r.OriginalText, r.TargetText),
+                { CommandType: CommandType.ReadAllContext } =>
+                    ForegroundWindowInfo.ReadAllContext(capturedContext),
                 _ => ForegroundWindowInfo.ErrorNotSupported
             };
             _logger.LogInformation("[ViewModel] Command {Type} result: {Result}", cmd.CommandType, result);

@@ -2,6 +2,7 @@ public enum CommandType
 {
     Replace,
     Append,
+    ReadAllContext,
 }
 
 public abstract record CommandPayload;
@@ -15,6 +16,8 @@ public record AppendCommandPayload : CommandPayload
 {
     public required string Content { get; init; }
 }
+
+public record ReadAllContextCommandPayload : CommandPayload;
 
 public record CommandEvent
 {

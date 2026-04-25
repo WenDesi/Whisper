@@ -19,9 +19,14 @@ public class LlmCommandStage : IPostProcessingStage
     public int Order => 200; // Run after cleanup stages
 
     private const string SystemPromptTemplate = """
-        You are a fast text-editing assistant. Infer the user's intent from their message and apply it to the provided text.
-        You MUST call the `apply_result` tool to write back the modified text — never output it as plain text.
-        After calling the tool, reply with exactly one concise sentence summarizing what was done.
+        You are a fast action-response assistant. user's message will consist of two parts: user-instruction and selected-text.
+        You job is:
+        1. Infer the user's intent from user-instruction and apply it to the provided text. selected-text may be empty.
+        2. You should complete task in at most 3 turn.
+        3. Quick response take higher priority.
+        4. You can leverage provided tools to write back the modified text if needed.       
+        5. After calling the tool, reply with exactly one concise sentence summarizing what was done.
+        6. If No tools are needed, directly return the modified text with a concise explanation of what you did.
 
         """;
 
@@ -31,16 +36,7 @@ public class LlmCommandStage : IPostProcessingStage
 
         User instruction:
         {1}
-
-        Remember, you MUST call the `{2}` tools to write back the modified text — never output it as plain text.
         """;
-
-    private static readonly ToolDefinition ApplyResultTool = new()
-    {
-        Name = "apply_result",
-        Description = "Write the modified text back to the user's context.",
-        ParametersSchema = """{"type":"object","properties":{"text":{"type":"string","description":"The fully modified text to apply."}},"required":["text"]}"""
-    };
 
     public LlmCommandStage(ILogger<LlmCommandStage> logger, ILlmProvider llmProvider)
     {
@@ -63,6 +59,8 @@ public class LlmCommandStage : IPostProcessingStage
             $"{toolContext.SelectedText}</selected-text>")}";
         var toolNames = String.Join(", ", toolContext.Tools.Select(t => t.Name));
         var userPrompt = string.Format(UserPromptTemplate, selectedText, $"<user-instruction>${text}</user-instruction>", toolNames);
+        _logger.LogDebug("[LlmCommand] Sending command to LLM. SystemPrompt={SystemPrompt}, UserPrompt={UserPrompt}, Tools={Tools}",
+            systemPrompt, userPrompt, toolNames);
         var result = await _llmProvider.ProcessCommandAsync(
             systemPrompt,
             userPrompt,

@@ -146,6 +146,12 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
             CommandType = CommandType.Replace,
             Payload = new ReplaceCommandPayload { OriginalText = evt.Replace.OriginalText, TargetText = evt.Replace.TargetText }
         },
+        LocalCommandEvent.PayloadOneofCase.ReadAllContext => new CommandEvent
+        {
+            CommandId = evt.CommandId,
+            CommandType = CommandType.ReadAllContext,
+            Payload = new ReadAllContextCommandPayload()
+        },
         _ => null
     };
 

@@ -103,6 +103,8 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
                 evt.Append = new AppendCommandDto { Content = a.Content };
             else if (cmd.Payload is ReplaceCommandPayload r)
                 evt.Replace = new ReplaceCommandDto { OriginalText = r.OriginalText, TargetText = r.TargetText };
+            else if (cmd.Payload is ReadAllContextCommandPayload)
+                evt.ReadAllContext = new ReadAllContextCommandDto();
             channel.Writer.TryWrite(new PipelineEvent { LocalCommand = evt });
         }
 

@@ -108,7 +108,7 @@ message LocalCommandEvent {
   oneof payload {
     AppendCommandDto append = 2;
     ReplaceCommandDto replace = 3;
-    ReadAllContentsCommandDto read_all_contents = 4;
+    ReadAllContextCommandDto read_all_context = 4;
   }
 }
 
@@ -121,7 +121,7 @@ message ReplaceCommandDto {
   string target_text = 2;
 }
 
-message ReadAllContentsCommandDto {}
+message ReadAllContextCommandDto {}
 
 service DeviceService {
   rpc ListCaptureDevices(ListCaptureDevicesRequest) returns (ListCaptureDevicesResponse);

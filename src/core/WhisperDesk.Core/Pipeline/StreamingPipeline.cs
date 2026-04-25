@@ -343,26 +343,43 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     private ToolContext BuildToolContext(CancellationToken ct)
     {
+        var hasSelectedText = !string.IsNullOrEmpty(_sessionTextContext?.Selected);
+
+        var tools = new List<ToolDefinition>
+        {
+            new ToolDefinition
+            {
+                Name = "append",
+                Description = "Append new content to the end of the current input field or editor. Use this tool when the user's intent is to ADD new content rather than modify existing text — for example, continuing a sentence, inserting a follow-up paragraph, or applying an LLM-generated addition back to the context.",
+                ParametersSchema = """{"type":"object","properties":{"content":{"type":"string","description":"The text to append"}},"required":["content"]}"""
+            },
+            new ToolDefinition
+            {
+                Name = "replace",
+                Description = "Replace a specific portion of the current input field or editor with new content. Use this tool when the user's intent is to MODIFY or rewrite existing text — for example, correcting a sentence, rephrasing a paragraph, or applying an LLM-generated edit back to the original context.",
+                ParametersSchema = """{"type":"object","properties":{"originalText":{"type":"string","description":"The exact text to replace"},"targetText":{"type":"string","description":"The replacement text"}},"required":["originalText","targetText"]}"""
+            },
+        };
+
+        // Only expose `read_all_context` when the user has NOT pre-selected text.
+        // When a selection exists, that selection IS the context — no need to scan the whole document.
+        if (!hasSelectedText)
+        {
+            tools.Add(new ToolDefinition
+            {
+                Name = "read_all_context",
+                Description = "Read the full text of the current editor, web page, or document. AVOID calling this tool unless absolutely necessary — it has SIDE EFFECTS: in some applications it must briefly take focus, send Ctrl+A/Ctrl+C, and may move the caret or flash the clipboard. Only call it when the user's instruction CANNOT be fulfilled from the transcript alone (e.g., 'summarize this page', 'answer based on the document'). For local edits like 'fix the grammar of what I said' or 'rephrase this sentence', do NOT call it. Returns the complete text as a string.",
+                ParametersSchema = """{"type":"object","properties":{}}"""
+            });
+        }
+
         return new ToolContext
         {
-            Tools =
-            [
-                new ToolDefinition
-                {
-                    Name = "append",
-                    Description = "Append new content to the end of the current input field or editor. Use this tool when the user's intent is to ADD new content rather than modify existing text — for example, continuing a sentence, inserting a follow-up paragraph, or applying an LLM-generated addition back to the context.",
-                    ParametersSchema = """{"type":"object","properties":{"content":{"type":"string","description":"The text to append"}},"required":["content"]}"""
-                },
-                new ToolDefinition
-                {
-                    Name = "replace",
-                    Description = "Replace a specific portion of the current input field or editor with new content. Use this tool when the user's intent is to MODIFY or rewrite existing text — for example, correcting a sentence, rephrasing a paragraph, or applying an LLM-generated edit back to the original context.",
-                    ParametersSchema = """{"type":"object","properties":{"originalText":{"type":"string","description":"The exact text to replace"},"targetText":{"type":"string","description":"The replacement text"}},"required":["originalText","targetText"]}"""
-                },
-            ],
+            Tools = tools,
             ToolExecutor = async (toolName, arguments, toolCt) =>
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, toolCt);
+                _logger.LogInformation("[Pipeline] Tool execution requested: {ToolName} with arguments {Arguments}", toolName, arguments);
                 var command = toolName switch
                 {
                     "append" => new CommandEvent
@@ -381,6 +398,11 @@ public class StreamingPipeline : IPipelineController, IDisposable
                             OriginalText = ParseRequiredString(arguments, "originalText"),
                             TargetText = ParseRequiredString(arguments, "targetText")
                         }
+                    },
+                    "read_all_context" => new CommandEvent
+                    {
+                        CommandType = CommandType.ReadAllContext,
+                        Payload = new ReadAllContextCommandPayload()
                     },
                     _ => throw new InvalidOperationException($"Unknown tool: {toolName}")
                 };
