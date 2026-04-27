@@ -18,6 +18,7 @@ public class HotWordContextProvider : IContextProvider
     private DateTime _cachedLastWriteUtc;
 
     public string Name => "Hot Words";
+    public int Order => 20;
 
     public HotWordContextProvider(ILogger<HotWordContextProvider> logger, PipelineConfig config)
     {

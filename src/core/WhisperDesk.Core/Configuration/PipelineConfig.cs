@@ -30,6 +30,12 @@ public class PipelineConfig
     public AudioFormatConfig Audio { get; set; } = new();
 
     public double HistorySessionGapMinutes { get; set; } = 10;
+
+    /// <summary>Enable Claude Code dialog context for STT.</summary>
+    public bool EnableDialogContext { get; set; } = true;
+
+    /// <summary>Maximum number of recent dialog turns to include.</summary>
+    public int DialogContextMaxTurns { get; set; } = 3;
 }
 
 public class AudioFormatConfig

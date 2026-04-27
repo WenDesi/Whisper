@@ -278,15 +278,28 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
     private static VolcengineCorpus? BuildCorpus(SttSessionOptions options)
     {
-        if (options.PhraseHints.Count == 0)
+        var hasHotwords = options.PhraseHints.Count > 0;
+        var hasDialogContext = options.DialogContext.Count > 0;
+
+        if (!hasHotwords && !hasDialogContext)
             return null;
 
-        var context = new VolcengineContext
+        var context = new VolcengineContext();
+
+        if (hasHotwords)
         {
-            Hotwords = options.PhraseHints
+            context.Hotwords = options.PhraseHints
                 .Select(w => new VolcengineHotword { Word = w })
-                .ToList()
-        };
+                .ToList();
+        }
+
+        if (hasDialogContext)
+        {
+            context.ContextType = "dialog_ctx";
+            context.ContextData = options.DialogContext
+                .Select(t => new VolcengineContextItem { Text = t.Text })
+                .ToList();
+        }
 
         var contextJson = JsonSerializer.Serialize(context, VolcengineJsonContext.Default.VolcengineContext);
         return new VolcengineCorpus { Context = contextJson };

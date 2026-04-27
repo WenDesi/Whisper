@@ -9,9 +9,12 @@ public interface IContextProvider
     /// <summary>Display name for logging/diagnostics.</summary>
     string Name { get; }
 
+    /// <summary>Execution order. Lower values run first.</summary>
+    int Order { get; }
+
     /// <summary>
     /// Contribute context to the session builder. Called once per session during startup.
-    /// Runs concurrently with other context providers.
+    /// Providers run sequentially in Order.
     /// </summary>
     Task ContributeAsync(SessionContextBuilder builder, CancellationToken ct = default);
 }
