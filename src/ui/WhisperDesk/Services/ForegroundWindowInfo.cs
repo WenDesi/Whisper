@@ -25,6 +25,10 @@ public static partial class ForegroundWindowInfo
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 #pragma warning restore SYSLIB1054
 
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindow(IntPtr hWnd);
+
     public static (string ProcessName, string WindowTitle) Get()
     {
         try
@@ -114,17 +118,32 @@ public static partial class ForegroundWindowInfo
     /// </summary>
     public static string Append(WindowTextContext context, string text)
     {
+        _logger.LogInformation("[Append] Start. Handle={Handle}, TextLen={Len}", context.WindowHandle, text.Length);
+
         if (!IsWindowAlive(context.WindowHandle))
+        {
+            _logger.LogWarning("[Append] Window is gone. Handle={Handle}", context.WindowHandle);
             return ErrorWindowGone;
+        }
+
+        _logger.LogDebug("[Append] Activating window. Handle={Handle}", context.WindowHandle);
         ActivateWindow(context.WindowHandle);
 
         var hasFocus = GetSelectedTextViaClipboard() != string.Empty;
+        _logger.LogDebug("[Append] Focus probe via clipboard. HasFocus={HasFocus}", hasFocus);
 
         if (hasFocus)
+        {
+            _logger.LogDebug("[Append] Pasting over current selection.");
             PasteOverSelection(text);   // pastes at current cursor, no focus change
+        }
         else
+        {
+            _logger.LogDebug("[Append] No focus detected; appending via Ctrl+End + paste.");
             AppendViaClipboard(context.WindowHandle, text);
+        }
 
+        _logger.LogInformation("[Append] Done. Handle={Handle}", context.WindowHandle);
         return Success;
     }
 
@@ -220,9 +239,9 @@ public static partial class ForegroundWindowInfo
 
     private static void ActivateWindow(IntPtr hwnd)
     {
-        if (hwnd == IntPtr.Zero || GetForegroundWindow() == hwnd) return;
-        SetForegroundWindow(hwnd);
-        Thread.Sleep(30);
+        // if (hwnd == IntPtr.Zero || GetForegroundWindow() == hwnd) return;
+        // SetForegroundWindow(hwnd);
+        // Thread.Sleep(30);
     }
 
     private static string SetAllTextViaClipboard(IntPtr hwnd, string text)
@@ -233,7 +252,8 @@ public static partial class ForegroundWindowInfo
             if (System.Windows.Clipboard.ContainsText())
                 previous = System.Windows.Clipboard.GetText();
 
-            System.Windows.Clipboard.SetText(text);
+            if (!TrySetClipboardText(text))
+                return ErrorNotSupported;
             SendKeys.SendWait("^a");
             Thread.Sleep(30);
             SendKeys.SendWait("^v");
@@ -252,8 +272,11 @@ public static partial class ForegroundWindowInfo
             if (System.Windows.Clipboard.ContainsText())
                 previous = System.Windows.Clipboard.GetText();
 
-            System.Windows.Clipboard.SetText(text);
-            SendKeys.SendWait("^{END}");
+            if (!TrySetClipboardText(text))
+            {
+                _logger.LogWarning("[AppendViaClipboard] Clipboard set failed; aborting paste.");
+                return;
+            }
             Thread.Sleep(30);
             SendKeys.SendWait("^v");
             Thread.Sleep(80);
@@ -272,11 +295,7 @@ public static partial class ForegroundWindowInfo
 
             System.Windows.Clipboard.Clear();
             SendKeys.SendWait("^c");
-            Thread.Sleep(80);
-
-            return System.Windows.Clipboard.ContainsText()
-                ? System.Windows.Clipboard.GetText()
-                : string.Empty;
+            return TryGetClipboardTextAfterCopy();
         }
         catch { return string.Empty; }
         finally { RestoreClipboard(previous); }
@@ -392,11 +411,8 @@ public static partial class ForegroundWindowInfo
             SendKeys.SendWait("^a");
             Thread.Sleep(30);
             SendKeys.SendWait("^c");
-            Thread.Sleep(80);
 
-            var text = System.Windows.Clipboard.ContainsText()
-                ? System.Windows.Clipboard.GetText()
-                : string.Empty;
+            var text = TryGetClipboardTextAfterCopy();
 
             // Collapse the selection so the caller doesn't leave the editor in a select-all state.
             SendKeys.SendWait("{RIGHT}");
@@ -409,7 +425,7 @@ public static partial class ForegroundWindowInfo
     private static bool IsWindowAlive(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero) return false;
-        try { return AutomationElement.FromHandle(hwnd) != null; }
+        try { return IsWindow(hwnd); }
         catch { return false; }
     }
 
@@ -421,7 +437,11 @@ public static partial class ForegroundWindowInfo
             if (System.Windows.Clipboard.ContainsText())
                 previous = System.Windows.Clipboard.GetText();
 
-            System.Windows.Clipboard.SetText(text);
+            if (!TrySetClipboardText(text))
+            {
+                _logger.LogWarning("[PasteOverSelection] Clipboard set failed; aborting paste.");
+                return;
+            }
             SendKeys.SendWait("^v");
             Thread.Sleep(80);
         }
@@ -433,10 +453,62 @@ public static partial class ForegroundWindowInfo
     {
         try
         {
-            if (previous != null) System.Windows.Clipboard.SetText(previous);
+            if (previous != null) TrySetClipboardText(previous);
             else System.Windows.Clipboard.Clear();
         }
         catch { }
+    }
+
+    // Clipboard APIs are flaky under contention (other apps holding the clipboard,
+    // Ctrl+C/Ctrl+V races). Retry until the clipboard reflects what we intended,
+    // or we give up. Returns true if the clipboard ended up with the expected text.
+    private const int ClipboardRetryAttempts = 8;
+    private const int ClipboardRetryDelayMs = 25;
+
+    private static bool TrySetClipboardText(string text)
+    {
+        for (var i = 0; i < ClipboardRetryAttempts; i++)
+        {
+            try
+            {
+                System.Windows.Clipboard.SetText(text);
+                if (System.Windows.Clipboard.ContainsText() &&
+                    System.Windows.Clipboard.GetText() == text)
+                {
+                    return true;
+                }
+            }
+            catch (Exception ex) when (i < ClipboardRetryAttempts - 1)
+            {
+                _logger.LogDebug(ex, "[Clipboard] SetText attempt {Attempt} failed; retrying.", i + 1);
+            }
+            Thread.Sleep(ClipboardRetryDelayMs);
+        }
+        _logger.LogWarning("[Clipboard] SetText failed after {Attempts} attempts.", ClipboardRetryAttempts);
+        return false;
+    }
+
+    // Used after sending Ctrl+C: poll until the clipboard has text (the target app
+    // may take a few ms to populate it) or until we time out.
+    private static string TryGetClipboardTextAfterCopy()
+    {
+        for (var i = 0; i < ClipboardRetryAttempts; i++)
+        {
+            try
+            {
+                if (System.Windows.Clipboard.ContainsText())
+                {
+                    var text = System.Windows.Clipboard.GetText();
+                    if (!string.IsNullOrEmpty(text)) return text;
+                }
+            }
+            catch (Exception ex) when (i < ClipboardRetryAttempts - 1)
+            {
+                _logger.LogDebug(ex, "[Clipboard] GetText attempt {Attempt} failed; retrying.", i + 1);
+            }
+            Thread.Sleep(ClipboardRetryDelayMs);
+        }
+        return string.Empty;
     }
 
     private static string ReplaceFirst(string text, string source, string target)
