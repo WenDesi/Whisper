@@ -69,7 +69,7 @@ public class LlmCommandStage : IPostProcessingStage
             "No text was selected. Apply the command to the entire transcript." :
             $"{toolContext.SelectedText}</selected-text>")}";
         var toolNames = String.Join(", ", toolContext.Tools.Select(t => t.Name));
-        var userPrompt = string.Format(UserPromptTemplate, selectedText, $"<user-instruction>${text}</user-instruction>", toolNames);
+        var userPrompt = string.Format(UserPromptTemplate, selectedText, $"<user-instruction>{text}</user-instruction>", toolNames);
         _logger.LogDebug("[LlmCommand] Sending command to LLM. SystemPrompt={SystemPrompt}, UserPrompt={UserPrompt}, Tools={Tools}",
             systemPrompt, userPrompt, toolNames);
         var result = await _llmProvider.ProcessCommandAsync(

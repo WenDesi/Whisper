@@ -8,7 +8,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Contract;
-using WhisperDesk.Core.Logging;
 using WhisperDesk.Server;
 using WhisperDesk.Models;
 using WhisperDesk.Services;

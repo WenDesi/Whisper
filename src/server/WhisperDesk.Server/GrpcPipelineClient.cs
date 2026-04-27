@@ -9,6 +9,7 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
     private readonly GrpcChannel _channel;
     private readonly PipelineService.PipelineServiceClient _client;
     private CancellationTokenSource? _subscribeCts;
+    private Task? _subscribeTask;
     private int _disposed;
 
     public PipelineState State { get; private set; } = PipelineState.Idle;

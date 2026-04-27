@@ -61,7 +61,7 @@ public class WhisperDeskServer : IDisposable
             options.ListenLocalhost(port, o => o.Protocols = HttpProtocols.Http2);
         });
 
-           builder.Services.AddLogging(b =>
+        builder.Services.AddLogging(b =>
         {
             b.AddConsole();
             b.AddProvider(new WhisperDesk.Logging.FileLoggerProvider(
