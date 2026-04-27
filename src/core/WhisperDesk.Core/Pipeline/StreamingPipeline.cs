@@ -118,7 +118,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 // 2. Prepare context + start STT in parallel
                 _contextBuilder = new SessionContextBuilder();
                 _contextBuilder.AddLanguages(_config.AutoDetectLanguages);
-                _contextBuilder.SetMetadata("foregroundProcess", _foregroundProcess);
+                // _contextBuilder.SetMetadata("foregroundProcess", _foregroundProcess);
                 _contextBuilder.SetMetadata("foregroundWindowTitle", _foregroundWindowTitle);
 
                 // Run context providers sequentially by Order (non-blocking)

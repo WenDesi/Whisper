@@ -5,7 +5,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Configuration;
-using WhisperDesk.Core.Logging;
 using WhisperDesk.Stt;
 using WhisperDesk.Llm;
 using WhisperDesk.Jobs;
@@ -62,10 +61,13 @@ public class WhisperDeskServer : IDisposable
             options.ListenLocalhost(port, o => o.Protocols = HttpProtocols.Http2);
         });
 
-        builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
-        builder.Logging.AddProvider(new FileLoggerProvider(logFilePath));
-        builder.Logging.SetMinimumLevel(LogLevel.Debug);
+           builder.Services.AddLogging(b =>
+        {
+            b.AddConsole();
+            b.AddProvider(new WhisperDesk.Logging.FileLoggerProvider(
+                WhisperDesk.Logging.FileLoggerProvider.GetLogPath("server")));
+            b.SetMinimumLevel(LogLevel.Debug);
+        });
 
         builder.Services.AddSttProvider(pipelineConfig.SttProvider, config);
         builder.Services.AddLlmProvider(pipelineConfig.LlmProvider, config);
