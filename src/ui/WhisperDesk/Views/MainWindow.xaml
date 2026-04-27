@@ -221,6 +221,8 @@
                                    Style="{StaticResource MaterialDesignCaptionTextBlock}" Opacity="0.6" />
                         <TextBlock Text="{Binding PasteHint}"
                                    Style="{StaticResource MaterialDesignCaptionTextBlock}" Opacity="0.6" />
+                        <TextBlock Text="{Binding CorrectionHint}"
+                                   Style="{StaticResource MaterialDesignCaptionTextBlock}" Opacity="0.6" />
                     </StackPanel>
 
                     <!-- Record button -->

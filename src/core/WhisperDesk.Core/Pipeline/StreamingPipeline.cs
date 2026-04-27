@@ -3,7 +3,9 @@ using WhisperDesk.Core.Configuration;
 using WhisperDesk.Core.Contract;
 using WhisperDesk.Stt.Contract;
 using WhisperDesk.Core.Services;
+using WhisperDesk.Llm.Contract;
 using WhisperDesk.Transcript.Contract;
+using Fluid;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -24,6 +26,10 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
     private readonly AudioDeviceService _audioDeviceService;
     private readonly ITranscriptionHistoryService _historyService;
+    private readonly ILlmProvider _llmProvider;
+
+    private static readonly FluidParser _fluidParser = new();
+    private static readonly Lazy<IFluidTemplate> _correctionTemplate = new(LoadCorrectionTemplate);
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
@@ -59,6 +65,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         IStreamingSttProvider sttProvider,
         AudioDeviceService audioDeviceService,
         ITranscriptionHistoryService historyService,
+        ILlmProvider llmProvider,
         IEnumerable<IContextProvider> contextProviders,
         IEnumerable<IPostProcessingStage> postProcessingStages)
     {
@@ -68,6 +75,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _sttProvider = sttProvider;
         _audioDeviceService = audioDeviceService;
         _historyService = historyService;
+        _llmProvider = llmProvider;
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
     }
@@ -322,6 +330,62 @@ public class StreamingPipeline : IPipelineController, IDisposable
             Message = error.Message,
             Exception = error.Exception
         });
+    }
+
+    public async Task<string?> CorrectLastResultAsync(string correctionTranscript, CancellationToken ct = default)
+    {
+        _logger.LogInformation("[Pipeline] CorrectLastResultAsync called. CorrectionTranscript={CorrectionLen} chars, HasPrevious={HasPrev}",
+            correctionTranscript.Length, LastProcessedText != null);
+
+        if (string.IsNullOrEmpty(LastProcessedText))
+        {
+            _logger.LogWarning("[Pipeline] No previous processed text to correct.");
+            return null;
+        }
+
+        try
+        {
+            var template = _correctionTemplate.Value;
+            var templateContext = new TemplateContext();
+            templateContext.SetValue("previous_text", LastProcessedText);
+            templateContext.SetValue("correction_text", correctionTranscript);
+
+            var userPrompt = await template.RenderAsync(templateContext);
+            _logger.LogDebug("[Pipeline] Correction prompt rendered ({Length} chars).", userPrompt.Length);
+
+            var corrected = await _llmProvider.ProcessTextAsync(
+                "You are a transcription correction assistant. Apply the user's spoken correction to the previous transcription.",
+                userPrompt,
+                new LlmRequestOptions { Temperature = 0.2f },
+                ct);
+
+            _logger.LogInformation("[Pipeline] Correction complete. Previous={PrevLen} chars -> Corrected={CorrLen} chars.",
+                LastProcessedText.Length, corrected.Length);
+
+            LastProcessedText = corrected;
+            return corrected;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Pipeline] Correction failed.");
+            return null;
+        }
+    }
+
+    private static IFluidTemplate LoadCorrectionTemplate()
+    {
+        var assembly = typeof(StreamingPipeline).Assembly;
+        var resourceName = "WhisperDesk.Core.Stages.PostProcessing.Prompts.Correction.liquid";
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded resource not found: {resourceName}");
+        using var reader = new StreamReader(stream);
+        var templateText = reader.ReadToEnd();
+
+        if (!_fluidParser.TryParse(templateText, out var template, out var error))
+        {
+            throw new InvalidOperationException($"Failed to parse Correction.liquid: {error}");
+        }
+        return template;
     }
 
     public void Dispose()

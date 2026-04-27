@@ -54,6 +54,17 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         await _client.AbortSessionAsync(new AbortSessionRequest());
     }
 
+    public async Task<string?> CorrectLastResultAsync(string correctionTranscript, CancellationToken ct = default)
+    {
+        var response = await _client.CorrectLastResultAsync(
+            new CorrectRequest { CorrectionTranscript = correctionTranscript },
+            cancellationToken: ct);
+        var text = response.CorrectedText;
+        if (!string.IsNullOrEmpty(text))
+            LastProcessedText = text;
+        return string.IsNullOrEmpty(text) ? null : text;
+    }
+
     public byte[]? GetRecordingAsWav()
     {
         var response = _client.GetRecordingWav(new GetRecordingWavRequest());

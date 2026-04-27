@@ -38,4 +38,10 @@ public interface IPipelineController : IDisposable
 
     /// <summary>Fired when a pipeline error occurs.</summary>
     event EventHandler<PipelineError> ErrorOccurred;
+
+    /// <summary>
+    /// Correct the last processed text using an LLM, given a spoken correction transcript.
+    /// Returns the corrected text, or null if no previous result exists.
+    /// </summary>
+    Task<string?> CorrectLastResultAsync(string correctionTranscript, CancellationToken ct = default);
 }

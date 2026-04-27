@@ -39,6 +39,12 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         return new AbortSessionResponse();
     }
 
+    public override async Task<CorrectResponse> CorrectLastResult(CorrectRequest request, ServerCallContext context)
+    {
+        var corrected = await _pipeline.CorrectLastResultAsync(request.CorrectionTranscript, context.CancellationToken);
+        return new CorrectResponse { CorrectedText = corrected ?? "" };
+    }
+
     public override Task<GetStateResponse> GetState(GetStateRequest request, ServerCallContext context)
     {
         var response = new GetStateResponse

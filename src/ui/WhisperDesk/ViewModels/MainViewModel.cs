@@ -24,6 +24,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly WhisperDeskSettings _appSettings;
     private CancellationTokenSource? _cts;
     private bool _isStopping;
+    private bool _isCorrectionMode;
 
     [ObservableProperty]
     private AppStatus _status = AppStatus.Idle;
@@ -54,6 +55,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public string PushToTalkHint => $"\U0001f3a4 Hold {_appSettings.Hotkeys.PushToTalk} to record";
     public string PasteHint => $"\U0001f4cb Press {_appSettings.Hotkeys.PasteTranscription} to paste";
+    public string CorrectionHint => $"✏️ Hold {_appSettings.Hotkeys.CorrectionHotkey} to correct";
 
     public MainViewModel(
         ILogger<MainViewModel> logger,
@@ -80,6 +82,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _hotkeyService.PushToTalkPressed += OnPushToTalkPressed;
         _hotkeyService.PushToTalkReleased += OnPushToTalkReleased;
         _hotkeyService.PasteHotkeyPressed += OnPasteHotkeyPressed;
+        _hotkeyService.CorrectionPressed += OnCorrectionPressed;
+        _hotkeyService.CorrectionReleased += OnCorrectionReleased;
 
         _hotkeyService.Start();
     }
@@ -104,9 +108,87 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CleanedText = result.ProcessedText;
             PartialText = string.Empty;
 
-            // Write to clipboard and paste — run off UI thread to avoid blocking animations
-            if (!string.IsNullOrEmpty(result.ProcessedText))
+            if (string.IsNullOrEmpty(result.ProcessedText))
+                return;
+
+            if (_isCorrectionMode)
             {
+                _logger.LogInformation("[ViewModel] Correction mode: sending correction transcript to LLM. Transcript={Len} chars",
+                    result.ProcessedText.Length);
+                _isCorrectionMode = false;
+                var correctionTranscript = result.ProcessedText;
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        _logger.LogDebug("[ViewModel] Calling CorrectLastResultAsync...");
+                        var corrected = await _pipeline.CorrectLastResultAsync(correctionTranscript);
+
+                        if (string.IsNullOrEmpty(corrected))
+                        {
+                            _logger.LogWarning("[ViewModel] Correction returned null/empty. No action taken.");
+                            return;
+                        }
+
+                        _logger.LogInformation("[ViewModel] Correction result: {Len} chars", corrected.Length);
+
+                        // Update UI
+                        Application.Current?.Dispatcher.InvokeAsync(() =>
+                        {
+                            CleanedText = corrected;
+                        });
+
+                        // Write corrected text to clipboard
+                        bool clipboardOk = false;
+                        var staThread = new Thread(() =>
+                        {
+                            for (int i = 0; i < 5; i++)
+                            {
+                                try
+                                {
+                                    Clipboard.SetDataObject(corrected, true);
+                                    clipboardOk = true;
+                                    _logger.LogInformation("[ViewModel] Corrected text copied to clipboard.");
+                                    break;
+                                }
+                                catch (System.Runtime.InteropServices.COMException ex)
+                                {
+                                    _logger.LogWarning("[ViewModel] Clipboard busy (attempt {Attempt}/5): {Message}", i + 1, ex.Message);
+                                    if (i < 4) Thread.Sleep(100);
+                                }
+                            }
+                        })
+                        {
+                            IsBackground = true
+                        };
+                        staThread.SetApartmentState(ApartmentState.STA);
+                        staThread.Start();
+                        staThread.Join();
+
+                        if (clipboardOk)
+                        {
+                            await Task.Delay(500);
+                            Application.Current?.Dispatcher.InvokeAsync(async () =>
+                            {
+                                _logger.LogDebug("[ViewModel] Performing undo + paste for correction.");
+                                await _pasteService.UndoAndPasteAsync();
+                            });
+                        }
+                        else
+                        {
+                            _logger.LogWarning("[ViewModel] Clipboard unavailable after retries, skipping correction paste.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[ViewModel] Correction mode failed.");
+                    }
+                });
+            }
+            else
+            {
+                // Normal mode: write to clipboard and paste
                 var textToPaste = result.ProcessedText;
                 _ = Task.Run(async () =>
                 {
@@ -192,6 +274,51 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (Status == AppStatus.Listening && !_isStopping)
             {
+                _isStopping = true;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
+                    }
+                    finally
+                    {
+                        Application.Current?.Dispatcher.InvokeAsync(() => _isStopping = false);
+                    }
+                });
+            }
+        });
+    }
+
+    private void OnCorrectionPressed(object? sender, EventArgs e)
+    {
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
+            {
+                if (string.IsNullOrEmpty(_pipeline.LastProcessedText))
+                {
+                    _logger.LogWarning("[ViewModel] Correction hotkey pressed but no previous result to correct.");
+                    return;
+                }
+
+                _logger.LogInformation("[ViewModel] Correction mode activated. Previous text: {Len} chars", _pipeline.LastProcessedText.Length);
+                _isCorrectionMode = true;
+                PartialText = string.Empty;
+                var (proc, title) = ForegroundWindowInfo.Get();
+                _cts = new CancellationTokenSource();
+                _ = Task.Run(() => _pipeline.StartSessionAsync(proc, title, _cts.Token));
+            }
+        });
+    }
+
+    private void OnCorrectionReleased(object? sender, EventArgs e)
+    {
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            if (Status == AppStatus.Listening && !_isStopping)
+            {
+                _logger.LogDebug("[ViewModel] Correction hotkey released, stopping session.");
                 _isStopping = true;
                 _ = Task.Run(async () =>
                 {
@@ -360,6 +487,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _hotkeyService.PushToTalkPressed -= OnPushToTalkPressed;
         _hotkeyService.PushToTalkReleased -= OnPushToTalkReleased;
         _hotkeyService.PasteHotkeyPressed -= OnPasteHotkeyPressed;
+        _hotkeyService.CorrectionPressed -= OnCorrectionPressed;
+        _hotkeyService.CorrectionReleased -= OnCorrectionReleased;
 
         _cts?.Cancel();
         _cts?.Dispose();

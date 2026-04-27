@@ -12,11 +12,14 @@ public class HotkeyService : IDisposable
     private LowLevelKeyboardHook? _keyboardHook;
 
     private bool _pushToTalkActive;
+    private bool _correctionActive;
     private readonly HashSet<HKey> _pressedKeys = new();
 
     public event EventHandler? PushToTalkPressed;
     public event EventHandler? PushToTalkReleased;
     public event EventHandler? PasteHotkeyPressed;
+    public event EventHandler? CorrectionPressed;
+    public event EventHandler? CorrectionReleased;
 
     public HotkeyService(ILogger<HotkeyService> logger, HotkeySettings settings)
     {
@@ -40,8 +43,8 @@ public class HotkeyService : IDisposable
         _keyboardHook.Up += OnKeyUp;
         _keyboardHook.Start();
 
-        _logger.LogInformation("Hotkey service started. Push-to-talk: {PTT}, Paste: {Paste}",
-            _settings.PushToTalk, _settings.PasteTranscription);
+        _logger.LogInformation("Hotkey service started. Push-to-talk: {PTT}, Paste: {Paste}, Correction: {Correction}",
+            _settings.PushToTalk, _settings.PasteTranscription, _settings.CorrectionHotkey);
     }
 
     private void OnKeyDown(object? sender, KeyboardEventArgs e)
@@ -52,7 +55,7 @@ public class HotkeyService : IDisposable
         }
 
         // Check push-to-talk
-        if (!_pushToTalkActive && IsHotkeyPressed(_settings.PushToTalk))
+        if (!_pushToTalkActive && !_correctionActive && IsHotkeyPressed(_settings.PushToTalk))
         {
             _pushToTalkActive = true;
             e.IsHandled = true;
@@ -63,6 +66,23 @@ public class HotkeyService : IDisposable
 
         // While push-to-talk is held, swallow repeat events for the PTT key
         if (_pushToTalkActive && ContainsPushToTalkKey(e))
+        {
+            e.IsHandled = true;
+            return;
+        }
+
+        // Check correction hotkey
+        if (!_correctionActive && !_pushToTalkActive && IsHotkeyPressed(_settings.CorrectionHotkey))
+        {
+            _correctionActive = true;
+            e.IsHandled = true;
+            _logger.LogDebug("Correction hotkey activated");
+            CorrectionPressed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        // While correction is held, swallow repeat events
+        if (_correctionActive && ContainsHotkeyKey(e, _settings.CorrectionHotkey))
         {
             e.IsHandled = true;
             return;
@@ -80,6 +100,7 @@ public class HotkeyService : IDisposable
     private void OnKeyUp(object? sender, KeyboardEventArgs e)
     {
         bool containsPttKey = ContainsPushToTalkKey(e);
+        bool containsCorrectionKey = ContainsHotkeyKey(e, _settings.CorrectionHotkey);
 
         foreach (var key in e.Keys.Values)
         {
@@ -101,14 +122,35 @@ public class HotkeyService : IDisposable
         {
             e.IsHandled = true;
         }
+
+        // Check if correction hotkey was released
+        if (_correctionActive && !IsHotkeyPressed(_settings.CorrectionHotkey))
+        {
+            _correctionActive = false;
+            e.IsHandled = true;
+            _logger.LogDebug("Correction hotkey released");
+            CorrectionReleased?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        // Swallow any correction-related key release while correction is still active
+        if (_correctionActive && containsCorrectionKey)
+        {
+            e.IsHandled = true;
+        }
     }
 
     /// <summary>
     /// Check if the keyboard event contains any key that is part of the push-to-talk hotkey.
     /// </summary>
-    private bool ContainsPushToTalkKey(KeyboardEventArgs e)
+    private bool ContainsPushToTalkKey(KeyboardEventArgs e) => ContainsHotkeyKey(e, _settings.PushToTalk);
+
+    /// <summary>
+    /// Check if the keyboard event contains any key that is part of the specified hotkey string.
+    /// </summary>
+    private bool ContainsHotkeyKey(KeyboardEventArgs e, string hotkeyString)
     {
-        var pttParts = _settings.PushToTalk.Split('+').Select(p => p.Trim().ToLowerInvariant());
+        var pttParts = hotkeyString.Split('+').Select(p => p.Trim().ToLowerInvariant());
         foreach (var part in pttParts)
         {
             HKey? targetKey = part switch

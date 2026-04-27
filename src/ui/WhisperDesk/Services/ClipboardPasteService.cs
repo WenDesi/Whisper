@@ -34,4 +34,27 @@ public class ClipboardPasteService
             _logger.LogError(ex, "[PasteService] Failed to paste to active window");
         }
     }
+
+    /// <summary>
+    /// Undo the previous paste (Ctrl+Z) then paste the corrected text (Ctrl+V).
+    /// </summary>
+    public async Task UndoAndPasteAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[PasteService] Sending Ctrl+Z to undo previous paste");
+            await Task.Delay(100);
+            SendKeys.SendWait("^z");
+
+            _logger.LogDebug("[PasteService] Waiting before paste...");
+            await Task.Delay(200);
+
+            SendKeys.SendWait("^v");
+            _logger.LogDebug("[PasteService] Undo and paste completed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[PasteService] Failed to undo and paste");
+        }
+    }
 }

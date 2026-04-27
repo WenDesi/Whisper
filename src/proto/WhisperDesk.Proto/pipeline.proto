@@ -11,6 +11,7 @@ service PipelineService {
   rpc GetState(GetStateRequest) returns (GetStateResponse);
   rpc GetRecordingWav(GetRecordingWavRequest) returns (GetRecordingWavResponse);
   rpc Subscribe(SubscribeRequest) returns (stream PipelineEvent);
+  rpc CorrectLastResult(CorrectRequest) returns (CorrectResponse);
 }
 
 // Requests
@@ -23,6 +24,14 @@ message AbortSessionRequest {}
 message GetStateRequest {}
 message GetRecordingWavRequest {}
 message SubscribeRequest {}
+
+// Correction
+message CorrectRequest {
+  string correction_transcript = 1;
+}
+message CorrectResponse {
+  string corrected_text = 1;
+}
 
 // Responses
 message StartSessionResponse {}

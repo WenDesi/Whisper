@@ -30,6 +30,7 @@ public class HotkeySettings
 {
     public string PushToTalk { get; set; } = "F9";
     public string PasteTranscription { get; set; } = "Ctrl+Shift+V";
+    public string CorrectionHotkey { get; set; } = "RightAlt+Shift";
 }
 
 public class AudioSettings
