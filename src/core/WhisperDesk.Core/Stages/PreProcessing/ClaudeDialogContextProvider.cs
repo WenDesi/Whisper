@@ -108,7 +108,7 @@ public class ClaudeDialogContextProvider : IContextProvider
         var turns = new List<(string Role, string Text)>();
 
         // Read from end to find the most recent turns first
-        for (int i = lines.Length - 1; i >= 0 && turns.Count < maxTurns * 2; i--)
+        for (int i = lines.Length - 1; i >= 0 && turns.Count < maxTurns; i--)
         {
             var line = lines[i];
             if (string.IsNullOrWhiteSpace(line)) continue;
