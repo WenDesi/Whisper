@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using WhisperDesk.Stt.Contract;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -11,6 +12,7 @@ public class SessionContextBuilder
     private readonly ConcurrentBag<string> _phraseHints = new();
     private readonly ConcurrentBag<string> _languages = new();
     private readonly ConcurrentDictionary<string, object> _metadata = new();
+    private readonly ConcurrentBag<(string Role, string Text)> _dialogTurns = new();
 
     /// <summary>Add phrase hints (hot words, technical terms) for improved recognition.</summary>
     public void AddPhraseHints(IEnumerable<string> hints)
@@ -41,4 +43,10 @@ public class SessionContextBuilder
 
     /// <summary>Snapshot the collected languages.</summary>
     public IReadOnlyList<string> Languages => _languages.ToArray();
+
+    /// <summary>Add a dialog turn (role + text) for dialog context.</summary>
+    public void AddDialogTurn(string role, string text) => _dialogTurns.Add((role, text));
+
+    /// <summary>Snapshot the collected dialog turns.</summary>
+    public IReadOnlyList<DialogTurn> DialogTurns => _dialogTurns.Select(t => new DialogTurn(t.Role, t.Text)).ToArray();
 }

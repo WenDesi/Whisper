@@ -26,6 +26,11 @@ public static class PipelineServiceRegistration
         // Context providers
         services.AddSingleton<IContextProvider, HotWordContextProvider>();
 
+        if (pipelineConfig.EnableDialogContext)
+        {
+            services.AddSingleton<IContextProvider, ClaudeDialogContextProvider>();
+        }
+
         // Post-processing stages
         if (pipelineConfig.EnableTextCleanup)
         {

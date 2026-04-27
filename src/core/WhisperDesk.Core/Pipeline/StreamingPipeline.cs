@@ -109,8 +109,10 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 // 2. Prepare context + start STT in parallel
                 _contextBuilder = new SessionContextBuilder();
                 _contextBuilder.AddLanguages(_config.AutoDetectLanguages);
+                _contextBuilder.SetMetadata("foregroundProcess", _foregroundProcess);
+                _contextBuilder.SetMetadata("foregroundWindowTitle", _foregroundWindowTitle);
 
-                // Run context providers in parallel (non-blocking)
+                // Run context providers sequentially by Order (non-blocking)
                 await PrepareContextAsync(_contextBuilder, ct);
 
                 // 3. Build STT session options with collected context
@@ -118,7 +120,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 {
                     AudioFormat = audioFormat,
                     Languages = _contextBuilder.Languages,
-                    PhraseHints = _contextBuilder.PhraseHints
+                    PhraseHints = _contextBuilder.PhraseHints,
+                    DialogContext = _contextBuilder.DialogTurns
                 };
 
                 // Wire partial results
@@ -263,20 +266,18 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     private async Task PrepareContextAsync(SessionContextBuilder builder, CancellationToken ct)
     {
-        var tasks = _contextProviders.Select(async provider =>
+        foreach (var provider in _contextProviders.OrderBy(p => p.Order))
         {
             try
             {
-                _logger.LogDebug("[Pipeline] Running context provider: {Name}", provider.Name);
+                _logger.LogDebug("[Pipeline] Running context provider: {Name} (order={Order})", provider.Name, provider.Order);
                 await provider.ContributeAsync(builder, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[Pipeline] Context provider '{Name}' failed (non-fatal).", provider.Name);
             }
-        });
-
-        await Task.WhenAll(tasks);
+        }
     }
 
     private async Task<string> RunPostProcessingAsync(string text, CancellationToken ct)
