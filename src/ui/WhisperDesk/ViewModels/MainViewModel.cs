@@ -25,6 +25,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _cts;
     private bool _isStopping;
     private bool _isCorrectionMode;
+    private string? _previousTextForCorrection;
 
     [ObservableProperty]
     private AppStatus _status = AppStatus.Idle;
@@ -123,7 +124,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     try
                     {
                         _logger.LogDebug("[ViewModel] Calling CorrectLastResultAsync...");
-                        var corrected = await _pipeline.CorrectLastResultAsync(correctionTranscript);
+                        var corrected = await _pipeline.CorrectLastResultAsync(_previousTextForCorrection!, correctionTranscript);
 
                         if (string.IsNullOrEmpty(corrected))
                         {
@@ -302,8 +303,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     return;
                 }
 
-                _logger.LogInformation("[ViewModel] Correction mode activated. Previous text: {Len} chars", _pipeline.LastProcessedText.Length);
+                _logger.LogInformation("[ViewModel] Correction mode activated. Previous text: {Len} chars", CleanedText.Length);
                 _isCorrectionMode = true;
+                _previousTextForCorrection = CleanedText;
                 PartialText = string.Empty;
                 var (proc, title) = ForegroundWindowInfo.Get();
                 _cts = new CancellationTokenSource();

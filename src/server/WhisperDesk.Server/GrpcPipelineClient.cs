@@ -54,10 +54,10 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         await _client.AbortSessionAsync(new AbortSessionRequest());
     }
 
-    public async Task<string?> CorrectLastResultAsync(string correctionTranscript, CancellationToken ct = default)
+    public async Task<string?> CorrectLastResultAsync(string previousText, string correctionTranscript, CancellationToken ct = default)
     {
         var response = await _client.CorrectLastResultAsync(
-            new CorrectRequest { CorrectionTranscript = correctionTranscript },
+            new CorrectRequest { PreviousText = previousText, CorrectionTranscript = correctionTranscript },
             cancellationToken: ct);
         var text = response.CorrectedText;
         if (!string.IsNullOrEmpty(text))

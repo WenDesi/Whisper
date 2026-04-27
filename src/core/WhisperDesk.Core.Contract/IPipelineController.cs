@@ -43,5 +43,5 @@ public interface IPipelineController : IDisposable
     /// Correct the last processed text using an LLM, given a spoken correction transcript.
     /// Returns the corrected text, or null if no previous result exists.
     /// </summary>
-    Task<string?> CorrectLastResultAsync(string correctionTranscript, CancellationToken ct = default);
+    Task<string?> CorrectLastResultAsync(string previousText, string correctionTranscript, CancellationToken ct = default);
 }

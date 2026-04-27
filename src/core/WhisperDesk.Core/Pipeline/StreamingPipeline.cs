@@ -332,16 +332,16 @@ public class StreamingPipeline : IPipelineController, IDisposable
         });
     }
 
-    public async Task<string?> CorrectLastResultAsync(string correctionTranscript, CancellationToken ct = default)
+    public async Task<string?> CorrectLastResultAsync(string previousText, string correctionTranscript, CancellationToken ct = default)
     {
-        _logger.LogInformation("[Pipeline] CorrectLastResultAsync called. CorrectionTranscript={CorrectionLen} chars, HasPrevious={HasPrev}",
-            correctionTranscript.Length, LastProcessedText != null);
-        _logger.LogDebug("[Pipeline] Correction input — Previous: {Previous}", LastProcessedText);
+        _logger.LogInformation("[Pipeline] CorrectLastResultAsync called. CorrectionTranscript={CorrectionLen} chars, PreviousText={PrevLen} chars",
+            correctionTranscript.Length, previousText.Length);
+        _logger.LogDebug("[Pipeline] Correction input — Previous: {Previous}", previousText);
         _logger.LogDebug("[Pipeline] Correction input — UserSaid: {UserSaid}", correctionTranscript);
 
-        if (string.IsNullOrEmpty(LastProcessedText))
+        if (string.IsNullOrEmpty(previousText))
         {
-            _logger.LogWarning("[Pipeline] No previous processed text to correct.");
+            _logger.LogWarning("[Pipeline] No previous text to correct.");
             return null;
         }
 
@@ -349,7 +349,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         {
             var template = _correctionTemplate.Value;
             var templateContext = new TemplateContext();
-            templateContext.SetValue("previous_text", LastProcessedText);
+            templateContext.SetValue("previous_text", previousText);
             templateContext.SetValue("correction_text", correctionTranscript);
 
             var userPrompt = await template.RenderAsync(templateContext);
@@ -362,7 +362,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 ct);
 
             _logger.LogInformation("[Pipeline] Correction complete. Previous={PrevLen} chars -> Corrected={CorrLen} chars.",
-                LastProcessedText.Length, corrected.Length);
+                previousText.Length, corrected.Length);
             _logger.LogDebug("[Pipeline] Correction result: {Corrected}", corrected);
 
             LastProcessedText = corrected;

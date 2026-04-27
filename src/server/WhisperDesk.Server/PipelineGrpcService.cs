@@ -41,7 +41,7 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
 
     public override async Task<CorrectResponse> CorrectLastResult(CorrectRequest request, ServerCallContext context)
     {
-        var corrected = await _pipeline.CorrectLastResultAsync(request.CorrectionTranscript, context.CancellationToken);
+        var corrected = await _pipeline.CorrectLastResultAsync(request.PreviousText, request.CorrectionTranscript, context.CancellationToken);
         return new CorrectResponse { CorrectedText = corrected ?? "" };
     }
 
