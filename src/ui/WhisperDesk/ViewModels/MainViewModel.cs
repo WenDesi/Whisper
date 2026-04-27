@@ -52,6 +52,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasError;
 
+    public string PushToTalkHint => $"\U0001f3a4 Hold {_appSettings.Hotkeys.PushToTalk} to record";
+    public string PasteHint => $"\U0001f4cb Press {_appSettings.Hotkeys.PasteTranscription} to paste";
+
     public MainViewModel(
         ILogger<MainViewModel> logger,
         IPipelineController pipeline,
@@ -138,9 +141,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     {
                         // Wait for RDP clipboard sync before pasting
                         await Task.Delay(500);
-                        Application.Current?.Dispatcher.InvokeAsync(() =>
+                        Application.Current?.Dispatcher.InvokeAsync(async () =>
                         {
-                            _pasteService.PasteToActiveWindow();
+                            await _pasteService.PasteToActiveWindowAsync();
                         });
                     }
                     else
@@ -205,11 +208,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
-    private void OnPasteHotkeyPressed(object? sender, EventArgs e)
+    private async void OnPasteHotkeyPressed(object? sender, EventArgs e)
     {
         if (!string.IsNullOrEmpty(_pipeline.LastProcessedText))
         {
-            _pasteService.PasteToActiveWindow();
+            _logger.LogDebug("[ViewModel] Paste hotkey pressed, invoking paste service");
+            await _pasteService.PasteToActiveWindowAsync();
         }
     }
 
