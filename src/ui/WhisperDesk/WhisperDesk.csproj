@@ -8,7 +8,7 @@
     <AssemblyName>WhisperDesk</AssemblyName>
     <RootNamespace>WhisperDesk</RootNamespace>
     <Version>0.1.0</Version>
-    <Description>Voice-to-text desktop app powered by Azure OpenAI Whisper</Description>
+    <Description>Voice-to-text desktop app</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

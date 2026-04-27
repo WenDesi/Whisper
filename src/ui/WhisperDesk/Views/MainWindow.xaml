@@ -53,7 +53,7 @@
                     <StackPanel>
                         <TextBlock Text="WhisperDesk"
                                    Style="{StaticResource MaterialDesignHeadline6TextBlock}" />
-                        <TextBlock Text="Voice to text, powered by Azure OpenAI"
+                        <TextBlock Text="Voice to text"
                                    Style="{StaticResource MaterialDesignCaptionTextBlock}"
                                    Opacity="0.7" />
                     </StackPanel>
