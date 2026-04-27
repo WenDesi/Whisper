@@ -198,24 +198,27 @@ public partial class App : Application
         {
             (serviceProvider as IDisposable)?.Dispose();
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[WhisperDesk] Shutdown error disposing service provider: {ex.Message}");
         }
 
         try
         {
             grpcClient?.Dispose();
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[WhisperDesk] Shutdown error disposing gRPC client: {ex.Message}");
         }
 
         try
         {
             server?.SignalShutdown();
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[WhisperDesk] Shutdown error signaling server: {ex.Message}");
         }
 
         if (server != null)
@@ -227,8 +230,9 @@ public partial class App : Application
         {
             singleInstanceMutex?.ReleaseMutex();
         }
-        catch (ApplicationException)
+        catch (ApplicationException ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[WhisperDesk] Shutdown error releasing mutex: {ex.Message}");
         }
 
         singleInstanceMutex?.Dispose();
@@ -244,8 +248,9 @@ public partial class App : Application
             {
                 server.Dispose();
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[WhisperDesk] Background server dispose error: {ex.Message}");
             }
         })
         {

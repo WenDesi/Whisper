@@ -16,21 +16,22 @@ public class ClipboardPasteService
         _logger = logger;
     }
 
-    public void PasteToActiveWindow()
+    public async Task PasteToActiveWindowAsync()
     {
         try
         {
+            _logger.LogDebug("[PasteService] Waiting for hotkey keys to release before pasting");
             // Small delay to let the hotkey keys release
-            Task.Delay(100).Wait();
+            await Task.Delay(100);
 
             // Use SendKeys to simulate Ctrl+V
             SendKeys.SendWait("^v");
 
-            _logger.LogDebug("Paste simulated to active window");
+            _logger.LogDebug("[PasteService] Paste simulated to active window");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to paste to active window");
+            _logger.LogError(ex, "[PasteService] Failed to paste to active window");
         }
     }
 }

@@ -53,7 +53,7 @@
                     <StackPanel>
                         <TextBlock Text="WhisperDesk"
                                    Style="{StaticResource MaterialDesignHeadline6TextBlock}" />
-                        <TextBlock Text="Voice to text, powered by Azure OpenAI"
+                        <TextBlock Text="Voice to text"
                                    Style="{StaticResource MaterialDesignCaptionTextBlock}"
                                    Opacity="0.7" />
                     </StackPanel>
@@ -217,16 +217,10 @@
 
                     <!-- Hotkey hints -->
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource MaterialDesignCaptionTextBlock}" Opacity="0.6">
-                            <Run Text="🎤 Hold " />
-                            <Run Text="Ctrl+Shift+R" FontWeight="Bold" />
-                            <Run Text=" to record" />
-                        </TextBlock>
-                        <TextBlock Style="{StaticResource MaterialDesignCaptionTextBlock}" Opacity="0.6">
-                            <Run Text="📋 Press " />
-                            <Run Text="Ctrl+Shift+V" FontWeight="Bold" />
-                            <Run Text=" to paste" />
-                        </TextBlock>
+                        <TextBlock Text="{Binding PushToTalkHint}"
+                                   Style="{StaticResource MaterialDesignCaptionTextBlock}" Opacity="0.6" />
+                        <TextBlock Text="{Binding PasteHint}"
+                                   Style="{StaticResource MaterialDesignCaptionTextBlock}" Opacity="0.6" />
                     </StackPanel>
 
                     <!-- Record button -->
