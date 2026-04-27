@@ -20,6 +20,7 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
     public event EventHandler<string>? PartialTranscriptUpdated;
     public event EventHandler<PipelineResult>? SessionCompleted;
     public event EventHandler<PipelineError>? ErrorOccurred;
+    public event EventHandler<CommandEvent>? LocalCommandExecuted;
 
     public GrpcPipelineClient(string address)
     {
@@ -28,12 +29,14 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         StartEventSubscription();
     }
 
-    public async Task StartSessionAsync(string foregroundProcess = "", string foregroundWindowTitle = "", CancellationToken ct = default)
+    public async Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, CancellationToken ct = default)
     {
         await _client.StartSessionAsync(new StartSessionRequest
         {
-            ForegroundProcess = foregroundProcess,
-            ForegroundWindowTitle = foregroundWindowTitle
+            ForegroundProcess = "",
+            ForegroundWindowTitle = textContext?.MainWindowTitle ?? "",
+            FileFullPath = textContext?.FileFullPath ?? "",
+            Selected = textContext?.Selected ?? ""
         }, cancellationToken: ct);
     }
 
@@ -54,6 +57,20 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         await _client.AbortSessionAsync(new AbortSessionRequest());
     }
 
+    public void SendCommandResult(CommandResult commandResult)
+    {
+        var resultText = commandResult.Result switch
+        {
+            TextCommandResult t => t.Result,
+            _ => ""
+        };
+        _client.SendCommandResult(new SendCommandResultRequest
+        {
+            CommandId = commandResult.CommandId,
+            ResultText = resultText
+        });
+    }
+
     public byte[]? GetRecordingAsWav()
     {
         var response = _client.GetRecordingWav(new GetRecordingWavRequest());
@@ -64,7 +81,7 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
     {
         var subscribeCts = new CancellationTokenSource();
         _subscribeCts = subscribeCts;
-        _subscribeTask = Task.Run(async () =>
+        Task.Run(async () =>
         {
             while (!subscribeCts.Token.IsCancellationRequested)
             {
@@ -109,8 +126,35 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
                     Message = evt.Error.Error.Message
                 });
                 break;
+            case PipelineEvent.EventOneofCase.LocalCommand:
+                var cmd = MapCommand(evt.LocalCommand);
+                if (cmd != null) LocalCommandExecuted?.Invoke(this, cmd);
+                break;
         }
     }
+
+    private static CommandEvent? MapCommand(LocalCommandEvent evt) => evt.PayloadCase switch
+    {
+        LocalCommandEvent.PayloadOneofCase.Append => new CommandEvent
+        {
+            CommandId = evt.CommandId,
+            CommandType = CommandType.Append,
+            Payload = new AppendCommandPayload { Content = evt.Append.Content }
+        },
+        LocalCommandEvent.PayloadOneofCase.Replace => new CommandEvent
+        {
+            CommandId = evt.CommandId,
+            CommandType = CommandType.Replace,
+            Payload = new ReplaceCommandPayload { OriginalText = evt.Replace.OriginalText, TargetText = evt.Replace.TargetText }
+        },
+        LocalCommandEvent.PayloadOneofCase.ReadAllContext => new CommandEvent
+        {
+            CommandId = evt.CommandId,
+            CommandType = CommandType.ReadAllContext,
+            Payload = new ReadAllContextCommandPayload()
+        },
+        _ => null
+    };
 
     private static PipelineState MapState(PipelineStateDto state) => state switch
     {

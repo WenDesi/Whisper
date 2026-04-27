@@ -39,6 +39,7 @@
     <PackageReference Include="System.Text.Json" />
     <PackageReference Include="H.Hooks" />
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" />
+    <PackageReference Include="MdXaml" />
   </ItemGroup>
 
   <ItemGroup>

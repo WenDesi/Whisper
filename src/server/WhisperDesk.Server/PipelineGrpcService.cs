@@ -18,7 +18,12 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
 
     public override async Task<StartSessionResponse> StartSession(StartSessionRequest request, ServerCallContext context)
     {
-        await _pipeline.StartSessionAsync(request.ForegroundProcess, request.ForegroundWindowTitle, context.CancellationToken);
+        await _pipeline.StartSessionAsync(new WindowTextSerializationInfo
+        {
+            Selected = request.Selected,
+            FileFullPath = request.FileFullPath,
+            MainWindowTitle = request.ForegroundWindowTitle
+        }, context.CancellationToken);
         return new StartSessionResponse();
     }
 
@@ -62,6 +67,16 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         });
     }
 
+    public override Task<SendCommandResultResponse> SendCommandResult(SendCommandResultRequest request, ServerCallContext context)
+    {
+        _pipeline.SendCommandResult(new CommandResult
+        {
+            CommandId = request.CommandId,
+            Result = new TextCommandResult { Result = request.ResultText }
+        });
+        return Task.FromResult(new SendCommandResultResponse());
+    }
+
     public override async Task Subscribe(SubscribeRequest request, IServerStreamWriter<PipelineEvent> responseStream, ServerCallContext context)
     {
         var channel = Channel.CreateUnbounded<PipelineEvent>();
@@ -81,10 +96,23 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         void OnError(object? s, PipelineError error) =>
             channel.Writer.TryWrite(new PipelineEvent { Error = new ErrorEvent { Error = new PipelineErrorDto { Stage = error.Stage, Message = error.Message } } });
 
+        void OnLocalCommand(object? s, CommandEvent cmd)
+        {
+            var evt = new LocalCommandEvent { CommandId = cmd.CommandId };
+            if (cmd.Payload is AppendCommandPayload a)
+                evt.Append = new AppendCommandDto { Content = a.Content };
+            else if (cmd.Payload is ReplaceCommandPayload r)
+                evt.Replace = new ReplaceCommandDto { OriginalText = r.OriginalText, TargetText = r.TargetText };
+            else if (cmd.Payload is ReadAllContextCommandPayload)
+                evt.ReadAllContext = new ReadAllContextCommandDto();
+            channel.Writer.TryWrite(new PipelineEvent { LocalCommand = evt });
+        }
+
         _pipeline.StateChanged += OnStateChanged;
         _pipeline.PartialTranscriptUpdated += OnPartial;
         _pipeline.SessionCompleted += OnCompleted;
         _pipeline.ErrorOccurred += OnError;
+        _pipeline.LocalCommandExecuted += OnLocalCommand;
 
         ct.Register(() => channel.Writer.TryComplete());
 
@@ -102,6 +130,7 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
             _pipeline.PartialTranscriptUpdated -= OnPartial;
             _pipeline.SessionCompleted -= OnCompleted;
             _pipeline.ErrorOccurred -= OnError;
+            _pipeline.LocalCommandExecuted -= OnLocalCommand;
         }
     }
 

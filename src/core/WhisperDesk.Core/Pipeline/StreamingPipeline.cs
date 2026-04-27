@@ -4,6 +4,9 @@ using WhisperDesk.Core.Contract;
 using WhisperDesk.Stt.Contract;
 using WhisperDesk.Core.Services;
 using WhisperDesk.Transcript.Contract;
+using System.Collections.Concurrent;
+using WhisperDesk.Llm.Contract;
+using WhisperDesk.Core.Tools;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -24,12 +27,14 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IReadOnlyList<IPostProcessingStage> _postProcessingStages;
     private readonly AudioDeviceService _audioDeviceService;
     private readonly ITranscriptionHistoryService _historyService;
+    private readonly IReadOnlyDictionary<string, ILocalTool> _localTools;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
-    private string _foregroundProcess = "";
     private string _foregroundWindowTitle = "";
+    private WindowTextSerializationInfo? _sessionTextContext= null;
+    private readonly int _timeoutMs = 10000; // Timeout for waiting on command responses
 
     public PipelineState State
     {
@@ -51,6 +56,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
     public event EventHandler<string>? PartialTranscriptUpdated;
     public event EventHandler<PipelineResult>? SessionCompleted;
     public event EventHandler<PipelineError>? ErrorOccurred;
+    public event EventHandler<CommandEvent>? LocalCommandExecuted;
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<CommandResult>> _commandResponseSources = new();
 
     public StreamingPipeline(
         ILogger<StreamingPipeline> logger,
@@ -60,7 +67,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
         AudioDeviceService audioDeviceService,
         ITranscriptionHistoryService historyService,
         IEnumerable<IContextProvider> contextProviders,
-        IEnumerable<IPostProcessingStage> postProcessingStages)
+        IEnumerable<IPostProcessingStage> postProcessingStages,
+        IEnumerable<ILocalTool> localTools)
     {
         _logger = logger;
         _config = config;
@@ -70,9 +78,10 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _historyService = historyService;
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
+        _localTools = localTools.ToDictionary(t => t.Name, StringComparer.Ordinal);
     }
 
-    public async Task StartSessionAsync(string foregroundProcess = "", string foregroundWindowTitle = "", CancellationToken ct = default)
+    public async Task StartSessionAsync(WindowTextSerializationInfo? textContext=null, CancellationToken ct = default)
     {
         if (!await _sessionLock.WaitAsync(0, ct))
         {
@@ -92,8 +101,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
             {
                 _logger.LogInformation("[Pipeline] Starting session...");
                 State = PipelineState.Listening;
-                _foregroundProcess = foregroundProcess;
-                _foregroundWindowTitle = foregroundWindowTitle;
+                _sessionTextContext = textContext;
+                _foregroundWindowTitle = textContext?.MainWindowTitle ?? "";
 
                 var audioFormat = new AudioFormat
                 {
@@ -109,7 +118,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 // 2. Prepare context + start STT in parallel
                 _contextBuilder = new SessionContextBuilder();
                 _contextBuilder.AddLanguages(_config.AutoDetectLanguages);
-                _contextBuilder.SetMetadata("foregroundProcess", _foregroundProcess);
+                // _contextBuilder.SetMetadata("foregroundProcess", _foregroundProcess);
                 _contextBuilder.SetMetadata("foregroundWindowTitle", _foregroundWindowTitle);
 
                 // Run context providers sequentially by Order (non-blocking)
@@ -220,7 +229,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 Source = result.SourceFile ?? "microphone",
                 SttProvider = _config.SttProvider,
                 LlmProvider = _config.LlmProvider,
-                ForegroundProcess = _foregroundProcess,
+                ForegroundProcess = "",
                 ForegroundWindowTitle = _foregroundWindowTitle
             };
             _ = _historyService.WriteEntryAsync(entry);
@@ -262,6 +271,11 @@ public class StreamingPipeline : IPipelineController, IDisposable
         State = PipelineState.Idle;
     }
 
+    public async Task RetrySessionAsync(WindowTextContext? textContext = null, CancellationToken ct = default)
+    {
+        await AbortSessionAsync();
+        await StartSessionAsync(textContext, ct);
+    }
     public byte[]? GetRecordingAsWav() => _audioRouter.GetRecordingAsWav();
 
     private async Task PrepareContextAsync(SessionContextBuilder builder, CancellationToken ct)
@@ -287,6 +301,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
             RawTranscript = text,
             Language = _config.Language,
             PhraseHints = _contextBuilder?.PhraseHints ?? [],
+            ToolContext = BuildToolContext(ct),
         };
 
         var current = text;
@@ -311,6 +326,160 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private void OnPartialResult(object? sender, SttPartialResult result)
     {
         PartialTranscriptUpdated?.Invoke(this, result.Text);
+    }
+
+    public void SendCommandResult(CommandResult commandResult)
+    {
+        _logger.LogInformation("[Pipeline] SendCommandResult called: CommandId={CommandId}, ResultType={ResultType}",
+            commandResult.CommandId, commandResult.Result.GetType().Name);
+
+        if (_commandResponseSources.TryGetValue(commandResult.CommandId, out var tcs))
+        {
+            var set = tcs.TrySetResult(commandResult);
+            _logger.LogInformation("[Pipeline] TCS.TrySetResult for CommandId={CommandId}: {Set}", commandResult.CommandId, set);
+        }
+        else
+        {
+            _logger.LogWarning("[Pipeline] No pending command found for response with CommandId '{CommandId}'. Pending: [{Pending}]",
+                commandResult.CommandId, string.Join(", ", _commandResponseSources.Keys));
+        }
+    }
+
+    private ToolContext BuildToolContext(CancellationToken ct)
+    {
+        var hasSelectedText = !string.IsNullOrEmpty(_sessionTextContext?.Selected);
+
+        var tools = new List<ToolDefinition>
+        {
+            new ToolDefinition
+            {
+                Name = "append",
+                Description = "Append new content to the end of the current input field or editor. Use this tool when the user's intent is to ADD new content rather than modify existing text — for example, continuing a sentence, inserting a follow-up paragraph, or applying an LLM-generated addition back to the context.",
+                ParametersSchema = """{"type":"object","properties":{"content":{"type":"string","description":"The text to append"}},"required":["content"]}"""
+            },
+            new ToolDefinition
+            {
+                Name = "replace",
+                Description = "Replace a specific portion of the current input field or editor with new content. Use this tool when the user's intent is to MODIFY or rewrite existing text — for example, correcting a sentence, rephrasing a paragraph, or applying an LLM-generated edit back to the original context.",
+                ParametersSchema = """{"type":"object","properties":{"originalText":{"type":"string","description":"The exact text to replace"},"targetText":{"type":"string","description":"The replacement text"}},"required":["originalText","targetText"]}"""
+            },
+        };
+
+        tools.Add(new ToolDefinition
+            {
+                Name = "read_all_context",
+                Description = "Read the full text of the current editor, web page, or document. AVOID calling this tool unless absolutely necessary — it has SIDE EFFECTS: in some applications it must briefly take focus, send Ctrl+A/Ctrl+C, and may move the caret or flash the clipboard. Only call it when the user's instruction CANNOT be fulfilled from the transcript alone (e.g., 'summarize this page', 'answer based on the document'). For local edits like 'fix the grammar of what I said' or 'rephrase this sentence', do NOT call it. Returns the complete text as a string.",
+                ParametersSchema = """{"type":"object","properties":{}}"""
+            });
+
+        foreach (var localTool in _localTools.Values)
+        {
+            tools.Add(new ToolDefinition
+            {
+                Name = localTool.Name,
+                Description = localTool.Description,
+                ParametersSchema = localTool.ParametersSchema
+            });
+        }
+
+        return new ToolContext
+        {
+            Tools = tools,
+            ToolExecutor = async (toolName, arguments, toolCt) =>
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, toolCt);
+                _logger.LogInformation("[Pipeline] Tool execution requested: {ToolName} with arguments {Arguments}", toolName, arguments);
+
+                if (_localTools.TryGetValue(toolName, out var localTool))
+                {
+                    return await localTool.ExecuteAsync(arguments, cts.Token);
+                }
+
+                var command = toolName switch
+                {
+                    "append" => new CommandEvent
+                    {
+                        CommandType = CommandType.Append,
+                        Payload = new AppendCommandPayload
+                        {
+                            Content = ParseRequiredString(arguments, "content")
+                        }
+                    },
+                    "replace" => new CommandEvent
+                    {
+                        CommandType = CommandType.Replace,
+                        Payload = new ReplaceCommandPayload
+                        {
+                            OriginalText = ParseRequiredString(arguments, "originalText"),
+                            TargetText = ParseRequiredString(arguments, "targetText")
+                        }
+                    },
+                    "read_all_context" => new CommandEvent
+                    {
+                        CommandType = CommandType.ReadAllContext,
+                        Payload = new ReadAllContextCommandPayload()
+                    },
+                    _ => throw new InvalidOperationException($"Unknown tool: {toolName}")
+                };
+                return await ExecuteRemoteCommandAsync(null, command, cts.Token);
+            },
+            SelectedText = _sessionTextContext?.Selected ?? "",
+            MainWindowTitle = _sessionTextContext?.MainWindowTitle ?? ""
+        };
+    }
+
+    private static string ParseRequiredString(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.GetProperty(key).GetString()
+            ?? throw new ArgumentException($"Tool argument '{key}' is null.");
+    }
+
+    private async Task<string> ExecuteRemoteCommandAsync(object? sender, CommandEvent command, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<CommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _commandResponseSources[command.CommandId] = tcs;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(_timeoutMs);
+        cts.Token.Register(() => tcs.TrySetCanceled(), useSynchronizationContext: false);
+        try
+        {
+            ct.Register(() => tcs.TrySetCanceled(), useSynchronizationContext: false);
+
+            var subscriberCount = LocalCommandExecuted?.GetInvocationList().Length ?? 0;
+            _logger.LogInformation("[Pipeline] Firing LocalCommandExecuted: CommandId={CommandId}, Type={Type}, Subscribers={Count}",
+                command.CommandId, command.CommandType, subscriberCount);
+
+            LocalCommandExecuted?.Invoke(this, command);
+
+            _logger.LogInformation("[Pipeline] Waiting for command result: CommandId={CommandId}, TimeoutMs={TimeoutMs}",
+                command.CommandId, _timeoutMs);
+
+            var result = await tcs.Task;
+
+            _logger.LogInformation("[Pipeline] Command result received: CommandId={CommandId}, ResultType={ResultType}",
+                command.CommandId, result.Result.GetType().Name);
+
+            return result.Result switch
+            {
+                TextCommandResult textResult => textResult.Result,
+                _ => throw new InvalidOperationException("Unsupported command result type")
+            };
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("[Pipeline] Command '{CommandId}' timed out after {TimeoutMs} ms.", command.CommandId, _timeoutMs);
+            throw new TimeoutException($"Command timed out after {_timeoutMs} ms.");
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("[Pipeline] Command '{CommandId}' cancelled by caller.", command.CommandId);
+            throw;
+        }
+        finally
+        {
+            _commandResponseSources.TryRemove(command.CommandId, out _);
+        }
     }
 
     private void OnSttError(object? sender, SttError error)

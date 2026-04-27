@@ -11,18 +11,27 @@ service PipelineService {
   rpc GetState(GetStateRequest) returns (GetStateResponse);
   rpc GetRecordingWav(GetRecordingWavRequest) returns (GetRecordingWavResponse);
   rpc Subscribe(SubscribeRequest) returns (stream PipelineEvent);
+  rpc SendCommandResult(SendCommandResultRequest) returns (SendCommandResultResponse);
 }
 
 // Requests
 message StartSessionRequest {
   string foreground_process = 1;
   string foreground_window_title = 2;
+  string file_full_path = 3;
+  string selected = 4;
 }
 message StopSessionRequest {}
 message AbortSessionRequest {}
 message GetStateRequest {}
 message GetRecordingWavRequest {}
 message SubscribeRequest {}
+
+message SendCommandResultRequest {
+  string command_id = 1;
+  string result_text = 2;
+}
+message SendCommandResultResponse {}
 
 // Responses
 message StartSessionResponse {}
@@ -74,6 +83,7 @@ message PipelineEvent {
     PartialTranscriptEvent partial_transcript = 2;
     SessionCompletedEvent session_completed = 3;
     ErrorEvent error = 4;
+    LocalCommandEvent local_command = 5;
   }
 }
 
@@ -92,6 +102,26 @@ message SessionCompletedEvent {
 message ErrorEvent {
   PipelineErrorDto error = 1;
 }
+
+message LocalCommandEvent {
+  string command_id = 1;
+  oneof payload {
+    AppendCommandDto append = 2;
+    ReplaceCommandDto replace = 3;
+    ReadAllContextCommandDto read_all_context = 4;
+  }
+}
+
+message AppendCommandDto {
+  string content = 1;
+}
+
+message ReplaceCommandDto {
+  string original_text = 1;
+  string target_text = 2;
+}
+
+message ReadAllContextCommandDto {}
 
 service DeviceService {
   rpc ListCaptureDevices(ListCaptureDevicesRequest) returns (ListCaptureDevicesResponse);

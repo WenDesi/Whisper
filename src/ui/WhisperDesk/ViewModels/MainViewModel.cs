@@ -24,6 +24,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly WhisperDeskSettings _appSettings;
     private CancellationTokenSource? _cts;
     private bool _isStopping;
+    private WindowTextContext? _sessionTextContext;
 
     [ObservableProperty]
     private AppStatus _status = AppStatus.Idle;
@@ -75,6 +76,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline.SessionCompleted += OnSessionCompleted;
         _pipeline.ErrorOccurred += OnPipelineError;
         _pipeline.PartialTranscriptUpdated += OnPartialTranscript;
+        _pipeline.LocalCommandExecuted += OnLocalCommandExecuted;
 
         // Wire hotkey events
         _hotkeyService.PushToTalkPressed += OnPushToTalkPressed;
@@ -82,6 +84,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _hotkeyService.PasteHotkeyPressed += OnPasteHotkeyPressed;
 
         _hotkeyService.Start();
+        ForegroundWindowInfo.Configure(_logger);
+    }
+
+    private void OnLocalCommandExecuted(object? sender, CommandEvent cmd)
+    {
+        var capturedContext = _sessionTextContext;
+        if (capturedContext is null) return;
+
+        var staThread = new Thread(() =>
+        {
+            string result = cmd switch
+            {
+                { CommandType: CommandType.Append, Payload: AppendCommandPayload a } =>
+                    ForegroundWindowInfo.Append(capturedContext, a.Content),
+                { CommandType: CommandType.Replace, Payload: ReplaceCommandPayload r } =>
+                    ForegroundWindowInfo.Replace(capturedContext, r.OriginalText, r.TargetText),
+                { CommandType: CommandType.ReadAllContext } =>
+                    ForegroundWindowInfo.ReadAllContext(capturedContext),
+                _ => ForegroundWindowInfo.ErrorNotSupported
+            };
+            _logger.LogInformation("[ViewModel] Command {Type} result: {Result}", cmd.CommandType, result);
+            _pipeline.SendCommandResult(new CommandResult
+            {
+                CommandId = cmd.CommandId,
+                Result = new TextCommandResult { Result = result }
+            });
+        });
+        staThread.SetApartmentState(ApartmentState.STA);
+        staThread.IsBackground = true;
+        staThread.Start();
     }
 
     private void OnPipelineStateChanged(object? sender, PipelineState pipelineState)
@@ -104,54 +136,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CleanedText = result.ProcessedText;
             PartialText = string.Empty;
 
-            // Write to clipboard and paste — run off UI thread to avoid blocking animations
-            if (!string.IsNullOrEmpty(result.ProcessedText))
-            {
-                var textToPaste = result.ProcessedText;
-                _ = Task.Run(async () =>
-                {
-                    // Write to clipboard with retries (must be on STA thread)
-                    bool clipboardOk = false;
-                    var staThread = new Thread(() =>
-                    {
-                        for (int i = 0; i < 5; i++)
-                        {
-                            try
-                            {
-                                Clipboard.SetDataObject(textToPaste, true);
-                                clipboardOk = true;
-                                _logger.LogInformation("[ViewModel] Cleaned text copied to clipboard.");
-                                break;
-                            }
-                            catch (System.Runtime.InteropServices.COMException ex)
-                            {
-                                _logger.LogWarning("[ViewModel] Clipboard busy (attempt {Attempt}/5): {Message}", i + 1, ex.Message);
-                                if (i < 4) Thread.Sleep(100);
-                            }
-                        }
-                    })
-                    {
-                        IsBackground = true
-                    };
-                    staThread.SetApartmentState(ApartmentState.STA);
-                    staThread.Start();
-                    staThread.Join();
-
-                    if (clipboardOk)
-                    {
-                        // Wait for RDP clipboard sync before pasting
-                        await Task.Delay(500);
-                        Application.Current?.Dispatcher.InvokeAsync(async () =>
-                        {
-                            await _pasteService.PasteToActiveWindowAsync();
-                        });
-                    }
-                    else
-                    {
-                        _logger.LogWarning("[ViewModel] Clipboard unavailable after retries, skipping auto-paste.");
-                    }
-                });
-            }
+            _logger.LogInformation("[ViewModel] Session completed. Raw: {RawLen} chars, Cleaned: {CleanLen} chars.",
+                RawText.Length, CleanedText.Length);
+            // if (!string.IsNullOrEmpty(result.ProcessedText))
+            // {
+            //     var textToPaste = result.ProcessedText;
+            //     var capturedContext = _sessionTextContext;
+            //     if (capturedContext is { } ctx)
+            //     {
+            //         var staThread = new Thread(() =>
+            //         {
+            //             var replaceResult = ForegroundWindowInfo.Append(ctx,  textToPaste);
+            //             if (replaceResult == ForegroundWindowInfo.Success)
+            //                 _logger.LogInformation("[ViewModel] Text inserted via Append.");
+            //             else
+            //                 _logger.LogWarning("[ViewModel] Append failed: {Reason}. Selected='{Selected}', Window={Handle}",
+            //                     replaceResult, ctx.Selected, ctx.WindowHandle);
+            //         });
+            //         staThread.SetApartmentState(ApartmentState.STA);
+            //         staThread.IsBackground = true;
+            //         staThread.Start();
+            //     }
+            //     else
+            //     {
+            //         _logger.LogWarning("[ViewModel] No session context captured, text not inserted.");
+            //     }
+                
+            // }
         });
     }
 
@@ -179,12 +190,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
             {
                 PartialText = string.Empty;
-                var (proc, title) = ForegroundWindowInfo.Get();
+                _sessionTextContext = ForegroundWindowInfo.GetTextContext();
                 _cts = new CancellationTokenSource();
-                _ = Task.Run(() => _pipeline.StartSessionAsync(proc, title, _cts.Token));
+                _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, _cts.Token));
             }
         });
     }
+
+    public void BeginPushToTalk() => OnPushToTalkPressed(this, EventArgs.Empty);
+    public void EndPushToTalk() => OnPushToTalkReleased(this, EventArgs.Empty);
 
     private void OnPushToTalkReleased(object? sender, EventArgs e)
     {
@@ -239,9 +253,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         else
         {
             PartialText = string.Empty;
-            var (proc, title) = ForegroundWindowInfo.Get();
+            _sessionTextContext = ForegroundWindowInfo.GetTextContext();
             _cts = new CancellationTokenSource();
-            _ = Task.Run(() => _pipeline.StartSessionAsync(proc, title, _cts.Token));
+            _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, _cts.Token));
         }
     }
 
@@ -355,6 +369,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline.SessionCompleted -= OnSessionCompleted;
         _pipeline.ErrorOccurred -= OnPipelineError;
         _pipeline.PartialTranscriptUpdated -= OnPartialTranscript;
+        _pipeline.LocalCommandExecuted -= OnLocalCommandExecuted;
 
         // Unsubscribe hotkey events
         _hotkeyService.PushToTalkPressed -= OnPushToTalkPressed;
