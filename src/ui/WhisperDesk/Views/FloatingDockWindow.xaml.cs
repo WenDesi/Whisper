@@ -112,7 +112,20 @@ public partial class FloatingDockWindow : Window
             }
         };
 
+        BubblePopup.CustomPopupPlacementCallback = PlaceBubbleAboveButton;
+
         PositionAtBottomRight();
+    }
+
+    private static CustomPopupPlacement[] PlaceBubbleAboveButton(Size popupSize, Size targetSize, Point offset)
+    {
+        // Center popup horizontally on the target button, sit 8px above its top edge.
+        var x = (targetSize.Width - popupSize.Width) / 2;
+        var y = -popupSize.Height - 8;
+        return new[]
+        {
+            new CustomPopupPlacement(new Point(x, y), PopupPrimaryAxis.Horizontal),
+        };
     }
 
     private void PositionAtBottomRight()
@@ -208,6 +221,10 @@ public partial class FloatingDockWindow : Window
 
         var newHeight = BubbleViewer.MaxHeight + e.VerticalChange;
         BubbleViewer.MaxHeight = Math.Max(120, Math.Min(800, newHeight));
+
+        // Force Popup to re-evaluate placement so it stays centered above the button.
+        BubblePopup.HorizontalOffset += 0.001;
+        BubblePopup.HorizontalOffset -= 0.001;
     }
 
     private void OnButtonMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

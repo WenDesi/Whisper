@@ -81,12 +81,10 @@
         <!-- Speech bubble popup -->
         <Popup x:Name="BubblePopup"
                PlacementTarget="{Binding ElementName=DockButton}"
-               Placement="Top"
+               Placement="Custom"
                AllowsTransparency="True"
                PopupAnimation="Fade"
-               StaysOpen="True"
-               VerticalOffset="-8"
-               HorizontalOffset="-400">
+               StaysOpen="True">
             <Border x:Name="BubbleBorder"
                     CornerRadius="12" Padding="14,10,10,10"
                     Width="480" MinWidth="240" MaxWidth="900"
