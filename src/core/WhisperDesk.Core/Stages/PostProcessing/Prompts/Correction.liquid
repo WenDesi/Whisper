@@ -1,9 +1,15 @@
-The user's previous speech was transcribed and cleaned as:
+The user's previous speech was transcribed as:
 "{{ previous_text }}"
 
-The user then said a correction:
+The user then spoke a correction:
 "{{ correction_text }}"
 
-Apply the user's correction to the previous text. Replace the incorrect words/phrases with what the user intended. Keep everything else unchanged.
+Your task: Apply the correction to the PREVIOUS text and return the full corrected sentence.
 
-Output ONLY the corrected full text. No explanation.
+Examples:
+- Previous: "A2上有OCR相关资源吗？" + Correction: "不是A2，是Azure" → "Azure上有OCR相关资源吗？"
+- Previous: "我们用的是STD框架" + Correction: "不是STD，是STT" → "我们用的是STT框架"
+- Previous: "打开kube内涕丝" + Correction: "是Kubernetes" → "打开Kubernetes"
+
+IMPORTANT: Return the PREVIOUS text with corrections applied. Do NOT return the correction itself.
+Output ONLY the corrected full text. No explanation, no quotes.

@@ -336,6 +336,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
     {
         _logger.LogInformation("[Pipeline] CorrectLastResultAsync called. CorrectionTranscript={CorrectionLen} chars, HasPrevious={HasPrev}",
             correctionTranscript.Length, LastProcessedText != null);
+        _logger.LogDebug("[Pipeline] Correction input — Previous: {Previous}", LastProcessedText);
+        _logger.LogDebug("[Pipeline] Correction input — UserSaid: {UserSaid}", correctionTranscript);
 
         if (string.IsNullOrEmpty(LastProcessedText))
         {
@@ -361,6 +363,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
             _logger.LogInformation("[Pipeline] Correction complete. Previous={PrevLen} chars -> Corrected={CorrLen} chars.",
                 LastProcessedText.Length, corrected.Length);
+            _logger.LogDebug("[Pipeline] Correction result: {Corrected}", corrected);
 
             LastProcessedText = corrected;
             return corrected;
