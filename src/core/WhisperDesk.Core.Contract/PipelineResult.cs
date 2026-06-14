@@ -15,4 +15,6 @@ public record PipelineResult
     public string Language { get; init; } = "zh";
 
     public string? SourceFile { get; init; }
+
+    public SessionMode Mode { get; init; } = SessionMode.Transcribe;
 }

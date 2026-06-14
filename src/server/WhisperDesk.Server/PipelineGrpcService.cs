@@ -151,12 +151,19 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         _ => SessionMode.Transcribe
     };
 
+    private static SessionModeDto MapMode(SessionMode mode) => mode switch
+    {
+        SessionMode.Instruct => SessionModeDto.Instruct,
+        _ => SessionModeDto.Transcribe
+    };
+
     private static PipelineResultDto MapResult(PipelineResult result) => new()
     {
         RawTranscript = result.RawTranscript,
         ProcessedText = result.ProcessedText,
         AudioDurationTicks = result.AudioDuration.Ticks,
         TimestampTicks = result.Timestamp.Ticks,
-        Language = result.Language ?? ""
+        Language = result.Language ?? "",
+        Mode = MapMode(result.Mode)
     };
 }
