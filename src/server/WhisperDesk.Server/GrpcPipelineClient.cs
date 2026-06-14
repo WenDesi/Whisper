@@ -29,20 +29,25 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         StartEventSubscription();
     }
 
-    public async Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, CancellationToken ct = default)
+    public async Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, SessionMode mode = SessionMode.Transcribe, CancellationToken ct = default)
     {
         await _client.StartSessionAsync(new StartSessionRequest
         {
             ForegroundProcess = "",
             ForegroundWindowTitle = textContext?.MainWindowTitle ?? "",
             FileFullPath = textContext?.FileFullPath ?? "",
-            Selected = textContext?.Selected ?? ""
+            Selected = textContext?.Selected ?? "",
+            Mode = MapMode(mode)
         }, cancellationToken: ct);
     }
 
-    public async Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default)
+    public async Task<PipelineResult?> StopSessionAsync(SessionMode? modeOverride = null, CancellationToken ct = default)
     {
-        var response = await _client.StopSessionAsync(new StopSessionRequest(), cancellationToken: ct);
+        var request = new StopSessionRequest
+        {
+            Mode = MapMode(modeOverride ?? SessionMode.Transcribe)
+        };
+        var response = await _client.StopSessionAsync(request, cancellationToken: ct);
         if (response.Result != null)
         {
             var result = MapResult(response.Result);
@@ -174,6 +179,12 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         AudioDuration = TimeSpan.FromTicks(dto.AudioDurationTicks),
         Timestamp = new DateTime(dto.TimestampTicks),
         Language = dto.Language
+    };
+
+    private static SessionModeDto MapMode(SessionMode mode) => mode switch
+    {
+        SessionMode.Instruct => SessionModeDto.Instruct,
+        _ => SessionModeDto.Transcribe
     };
 
     public void Dispose()

@@ -69,8 +69,8 @@ public partial class App : Application
             _floatingDock.DockContextMenu = BuildAppMenu();
 
             var mainVm = _serviceProvider.GetRequiredService<MainViewModel>();
-            _floatingDock.PushToTalkStarted += (_, _) => mainVm.BeginPushToTalk();
-            _floatingDock.PushToTalkReleased += (_, _) => mainVm.EndPushToTalk();
+            _floatingDock.RecordStarted += (_, _) => mainVm.BeginPushToTalk();
+            _floatingDock.RecordReleased += (_, _) => mainVm.EndPushToTalk();
 
             var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
             pipeline.StateChanged += (_, pipelineState) =>

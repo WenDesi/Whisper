@@ -34,6 +34,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
     private string _foregroundWindowTitle = "";
     private WindowTextSerializationInfo? _sessionTextContext= null;
+    private SessionMode _sessionMode = SessionMode.Transcribe;
     private readonly int _timeoutMs = 10000; // Timeout for waiting on command responses
 
     public PipelineState State
@@ -81,7 +82,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _localTools = localTools.ToDictionary(t => t.Name, StringComparer.Ordinal);
     }
 
-    public async Task StartSessionAsync(WindowTextSerializationInfo? textContext=null, CancellationToken ct = default)
+    public async Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, SessionMode mode = SessionMode.Transcribe, CancellationToken ct = default)
     {
         if (!await _sessionLock.WaitAsync(0, ct))
         {
@@ -99,10 +100,11 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
             try
             {
-                _logger.LogInformation("[Pipeline] Starting session...");
+                _logger.LogInformation("[Pipeline] Starting session (mode={Mode})...", mode);
                 State = PipelineState.Listening;
                 _sessionTextContext = textContext;
                 _foregroundWindowTitle = textContext?.MainWindowTitle ?? "";
+                _sessionMode = mode;
 
                 var audioFormat = new AudioFormat
                 {
@@ -163,7 +165,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         }
     }
 
-    public async Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default)
+    public async Task<PipelineResult?> StopSessionAsync(SessionMode? modeOverride = null, CancellationToken ct = default)
     {
         if (State != PipelineState.Listening)
         {
@@ -173,7 +175,12 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
         try
         {
-            _logger.LogInformation("[Pipeline] Stopping session...");
+            if (modeOverride.HasValue && modeOverride.Value != _sessionMode)
+            {
+                _logger.LogInformation("[Pipeline] Mode updated at stop: {Old} -> {New}", _sessionMode, modeOverride.Value);
+                _sessionMode = modeOverride.Value;
+            }
+            _logger.LogInformation("[Pipeline] Stopping session (mode={Mode})...", _sessionMode);
 
             // 1. Stop mic capture
             _audioRouter.Stop();
@@ -274,7 +281,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     public async Task RetrySessionAsync(WindowTextContext? textContext = null, CancellationToken ct = default)
     {
         await AbortSessionAsync();
-        await StartSessionAsync(textContext, ct);
+        await StartSessionAsync(textContext, _sessionMode, ct);
     }
     public byte[]? GetRecordingAsWav() => _audioRouter.GetRecordingAsWav();
 
@@ -304,8 +311,15 @@ public class StreamingPipeline : IPipelineController, IDisposable
             ToolContext = BuildToolContext(ct),
         };
 
+        var applicableStages = _postProcessingStages
+            .Where(s => s.AppliesTo.Contains(_sessionMode))
+            .ToList();
+
+        _logger.LogInformation("[Pipeline] Mode={Mode}, running {Count} post-processing stage(s)",
+            _sessionMode, applicableStages.Count);
+
         var current = text;
-        foreach (var stage in _postProcessingStages)
+        foreach (var stage in applicableStages)
         {
             try
             {

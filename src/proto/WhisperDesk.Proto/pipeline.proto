@@ -20,8 +20,11 @@ message StartSessionRequest {
   string foreground_window_title = 2;
   string file_full_path = 3;
   string selected = 4;
+  SessionModeDto mode = 5;
 }
-message StopSessionRequest {}
+message StopSessionRequest {
+  SessionModeDto mode = 1;
+}
 message AbortSessionRequest {}
 message GetStateRequest {}
 message GetRecordingWavRequest {}
@@ -53,6 +56,11 @@ message GetRecordingWavResponse {
 }
 
 // DTOs
+enum SessionModeDto {
+  TRANSCRIBE = 0;
+  INSTRUCT = 1;
+}
+
 enum PipelineStateDto {
   IDLE = 0;
   LISTENING = 1;
