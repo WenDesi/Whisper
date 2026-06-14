@@ -147,6 +147,7 @@ public partial class App : Application
         services.AddSingleton<IPipelineController>(grpcClient);
         services.AddSingleton(new GrpcDeviceClient(serverAddress));
         services.AddSingleton<HotkeyService>();
+        services.AddSingleton<TextInjectionService>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
     }

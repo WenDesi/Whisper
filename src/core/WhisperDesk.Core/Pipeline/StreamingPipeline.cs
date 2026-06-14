@@ -219,7 +219,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
             {
                 RawTranscript = rawTranscript,
                 ProcessedText = processedText,
-                Language = _config.Language
+                Language = _config.Language,
+                Mode = _sessionMode
             };
 
             State = PipelineState.Completed;

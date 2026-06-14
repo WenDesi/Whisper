@@ -178,13 +178,20 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         ProcessedText = dto.ProcessedText,
         AudioDuration = TimeSpan.FromTicks(dto.AudioDurationTicks),
         Timestamp = new DateTime(dto.TimestampTicks),
-        Language = dto.Language
+        Language = dto.Language,
+        Mode = MapMode(dto.Mode)
     };
 
     private static SessionModeDto MapMode(SessionMode mode) => mode switch
     {
         SessionMode.Instruct => SessionModeDto.Instruct,
         _ => SessionModeDto.Transcribe
+    };
+
+    private static SessionMode MapMode(SessionModeDto mode) => mode switch
+    {
+        SessionModeDto.Instruct => SessionMode.Instruct,
+        _ => SessionMode.Transcribe
     };
 
     public void Dispose()

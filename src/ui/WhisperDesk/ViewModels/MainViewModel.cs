@@ -21,6 +21,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly HotkeyService _hotkeyService;
     private readonly GrpcDeviceClient _deviceClient;
     private readonly WhisperDeskSettings _appSettings;
+    private readonly TextInjectionService _textInjection;
     private CancellationTokenSource? _cts;
     private bool _isStopping;
     private WindowTextContext? _sessionTextContext;
@@ -59,13 +60,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IPipelineController pipeline,
         HotkeyService hotkeyService,
         GrpcDeviceClient deviceClient,
-        WhisperDeskSettings appSettings)
+        WhisperDeskSettings appSettings,
+        TextInjectionService textInjection)
     {
         _logger = logger;
         _pipeline = pipeline;
         _hotkeyService = hotkeyService;
         _deviceClient = deviceClient;
         _appSettings = appSettings;
+        _textInjection = textInjection;
 
         // Wire pipeline events
         _pipeline.StateChanged += OnPipelineStateChanged;
@@ -131,34 +134,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CleanedText = result.ProcessedText;
             PartialText = string.Empty;
 
-            _logger.LogInformation("[ViewModel] Session completed. Raw: {RawLen} chars, Cleaned: {CleanLen} chars.",
-                RawText.Length, CleanedText.Length);
-            // if (!string.IsNullOrEmpty(result.ProcessedText))
-            // {
-            //     var textToPaste = result.ProcessedText;
-            //     var capturedContext = _sessionTextContext;
-            //     if (capturedContext is { } ctx)
-            //     {
-            //         var staThread = new Thread(() =>
-            //         {
-            //             var replaceResult = ForegroundWindowInfo.Append(ctx,  textToPaste);
-            //             if (replaceResult == ForegroundWindowInfo.Success)
-            //                 _logger.LogInformation("[ViewModel] Text inserted via Append.");
-            //             else
-            //                 _logger.LogWarning("[ViewModel] Append failed: {Reason}. Selected='{Selected}', Window={Handle}",
-            //                     replaceResult, ctx.Selected, ctx.WindowHandle);
-            //         });
-            //         staThread.SetApartmentState(ApartmentState.STA);
-            //         staThread.IsBackground = true;
-            //         staThread.Start();
-            //     }
-            //     else
-            //     {
-            //         _logger.LogWarning("[ViewModel] No session context captured, text not inserted.");
-            //     }
-                
-            // }
+            _logger.LogInformation("[ViewModel] Session completed (mode={Mode}). Raw: {RawLen} chars, Cleaned: {CleanLen} chars.",
+                result.Mode, RawText.Length, CleanedText.Length);
         });
+
+        if (result.Mode == SessionMode.Transcribe && !string.IsNullOrEmpty(result.ProcessedText))
+        {
+            Task.Run(() =>
+            {
+                try
+                {
+                    _textInjection.InjectText(result.ProcessedText);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[ViewModel] Text injection failed.");
+                }
+            });
+        }
     }
 
     private void OnPipelineError(object? sender, PipelineError error)
