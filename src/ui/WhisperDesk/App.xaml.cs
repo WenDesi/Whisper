@@ -61,7 +61,6 @@ public partial class App : Application
 
             _overlayWindow = new OverlayWindow();
             _overlayWindow.Initialize();
-            _overlayWindow.SetPasteService(_serviceProvider.GetRequiredService<ClipboardPasteService>());
 
             _floatingDock = new FloatingDockWindow();
             _floatingDock.OpenMainWindowRequested += (_, _) => _mainWindow?.ShowFromTray();
@@ -148,7 +147,6 @@ public partial class App : Application
         services.AddSingleton<IPipelineController>(grpcClient);
         services.AddSingleton(new GrpcDeviceClient(serverAddress));
         services.AddSingleton<HotkeyService>();
-        services.AddSingleton<ClipboardPasteService>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
     }

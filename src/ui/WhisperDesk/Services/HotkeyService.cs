@@ -17,7 +17,6 @@ public class HotkeyService : IDisposable
 
     public event EventHandler<SessionMode>? RecordPressed;
     public event EventHandler<SessionMode>? RecordReleased;
-    public event EventHandler? PasteHotkeyPressed;
 
     public HotkeyService(ILogger<HotkeyService> logger, HotkeySettings settings)
     {
@@ -41,8 +40,8 @@ public class HotkeyService : IDisposable
         _keyboardHook.Up += OnKeyUp;
         _keyboardHook.Start();
 
-        _logger.LogInformation("Hotkey service started. Transcribe: {Transcribe}, Instruct: {Instruct}, Paste: {Paste}",
-            _settings.Transcribe, _settings.Instruct, _settings.PasteTranscription);
+        _logger.LogInformation("Hotkey service started. Transcribe: {Transcribe}, Instruct: {Instruct}",
+            _settings.Transcribe, _settings.Instruct);
     }
 
     private void OnKeyDown(object? sender, KeyboardEventArgs e)
@@ -80,15 +79,6 @@ public class HotkeyService : IDisposable
         if (_recordingActive && ContainsAnyRecordingKey(e))
         {
             e.IsHandled = true;
-            return;
-        }
-
-        // Check paste hotkey
-        if (IsHotkeyPressed(_settings.PasteTranscription))
-        {
-            e.IsHandled = true;
-            _logger.LogDebug("Paste hotkey activated");
-            PasteHotkeyPressed?.Invoke(this, EventArgs.Empty);
         }
     }
 

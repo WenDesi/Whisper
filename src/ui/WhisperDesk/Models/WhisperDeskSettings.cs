@@ -30,7 +30,6 @@ public class HotkeySettings
 {
     public string Transcribe { get; set; } = "RightAlt";
     public string Instruct { get; set; } = "RightAlt+Shift";
-    public string PasteTranscription { get; set; } = "Ctrl+Shift+V";
 }
 
 public class AudioSettings
