@@ -1,3 +1,5 @@
+using WhisperDesk.Core.Contract;
+
 namespace WhisperDesk.Core.Pipeline;
 
 /// <summary>
@@ -11,6 +13,9 @@ public interface IPostProcessingStage
 
     /// <summary>Execution order (lower = earlier).</summary>
     int Order { get; }
+
+    /// <summary>Which session modes this stage participates in.</summary>
+    IReadOnlySet<SessionMode> AppliesTo { get; }
 
     /// <summary>
     /// Process text from the previous stage (or raw STT output for the first stage).

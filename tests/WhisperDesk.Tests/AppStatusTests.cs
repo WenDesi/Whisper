@@ -29,7 +29,8 @@ public class AppStatusTests
         Assert.Equal("zh-CN", settings.AzureSpeech.Language);
 
         // Hotkey defaults
-        Assert.Equal("F9", settings.Hotkeys.PushToTalk);
+        Assert.Equal("RightAlt", settings.Hotkeys.Transcribe);
+        Assert.Equal("RightAlt+Shift", settings.Hotkeys.Instruct);
         Assert.Equal("Ctrl+Shift+V", settings.Hotkeys.PasteTranscription);
 
         // Audio defaults

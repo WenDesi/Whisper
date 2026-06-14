@@ -7,10 +7,11 @@ namespace WhisperDesk.Core.Contract;
 public interface IPipelineController : IDisposable
 {
     /// <summary>Start a new recording/transcription session.</summary>
-    Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, CancellationToken ct = default);
+    Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, SessionMode mode = SessionMode.Transcribe, CancellationToken ct = default);
 
     /// <summary>Stop recording and process the captured audio through the pipeline.</summary>
-    Task<PipelineResult?> StopSessionAsync(CancellationToken ct = default);
+    /// <param name="modeOverride">If supplied, overrides the mode that was set at start time (used for hotkey-modifier dynamic switching).</param>
+    Task<PipelineResult?> StopSessionAsync(SessionMode? modeOverride = null, CancellationToken ct = default);
 
     /// <summary>Abort the current session immediately, discarding partial results.</summary>
     Task AbortSessionAsync();

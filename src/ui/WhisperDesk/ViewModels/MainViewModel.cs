@@ -53,7 +53,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasError;
 
-    public string PushToTalkHint => $"\U0001f3a4 Hold {_appSettings.Hotkeys.PushToTalk} to record";
+    public string PushToTalkHint => $"\U0001f3a4 Hold {_appSettings.Hotkeys.Transcribe} to dictate, {_appSettings.Hotkeys.Instruct} to instruct";
     public string PasteHint => $"\U0001f4cb Press {_appSettings.Hotkeys.PasteTranscription} to paste";
 
     public MainViewModel(
@@ -79,8 +79,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline.LocalCommandExecuted += OnLocalCommandExecuted;
 
         // Wire hotkey events
-        _hotkeyService.PushToTalkPressed += OnPushToTalkPressed;
-        _hotkeyService.PushToTalkReleased += OnPushToTalkReleased;
+        _hotkeyService.RecordPressed += OnRecordPressed;
+        _hotkeyService.RecordReleased += OnRecordReleased;
         _hotkeyService.PasteHotkeyPressed += OnPasteHotkeyPressed;
 
         _hotkeyService.Start();
@@ -183,7 +183,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
-    private void OnPushToTalkPressed(object? sender, EventArgs e)
+    private void OnRecordPressed(object? sender, SessionMode pressMode)
     {
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
@@ -192,15 +192,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 PartialText = string.Empty;
                 _sessionTextContext = ForegroundWindowInfo.GetTextContext();
                 _cts = new CancellationTokenSource();
-                _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, _cts.Token));
+                _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, pressMode, _cts.Token));
             }
         });
     }
 
-    public void BeginPushToTalk() => OnPushToTalkPressed(this, EventArgs.Empty);
-    public void EndPushToTalk() => OnPushToTalkReleased(this, EventArgs.Empty);
+    public void BeginPushToTalk() => OnRecordPressed(this, SessionMode.Transcribe);
+    public void EndPushToTalk() => OnRecordReleased(this, SessionMode.Transcribe);
 
-    private void OnPushToTalkReleased(object? sender, EventArgs e)
+    private void OnRecordReleased(object? sender, SessionMode releaseMode)
     {
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
@@ -211,7 +211,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     try
                     {
-                        await _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
+                        await _pipeline.StopSessionAsync(releaseMode, _cts?.Token ?? CancellationToken.None);
                     }
                     finally
                     {
@@ -242,7 +242,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 try
                 {
-                    await _pipeline.StopSessionAsync(_cts?.Token ?? CancellationToken.None);
+                    await _pipeline.StopSessionAsync(SessionMode.Transcribe, _cts?.Token ?? CancellationToken.None);
                 }
                 finally
                 {
@@ -255,7 +255,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             PartialText = string.Empty;
             _sessionTextContext = ForegroundWindowInfo.GetTextContext();
             _cts = new CancellationTokenSource();
-            _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, _cts.Token));
+            _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, SessionMode.Transcribe, _cts.Token));
         }
     }
 
@@ -372,8 +372,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline.LocalCommandExecuted -= OnLocalCommandExecuted;
 
         // Unsubscribe hotkey events
-        _hotkeyService.PushToTalkPressed -= OnPushToTalkPressed;
-        _hotkeyService.PushToTalkReleased -= OnPushToTalkReleased;
+        _hotkeyService.RecordPressed -= OnRecordPressed;
+        _hotkeyService.RecordReleased -= OnRecordReleased;
         _hotkeyService.PasteHotkeyPressed -= OnPasteHotkeyPressed;
 
         _cts?.Cancel();

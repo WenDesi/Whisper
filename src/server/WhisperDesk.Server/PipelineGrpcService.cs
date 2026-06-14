@@ -23,13 +23,13 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
             Selected = request.Selected,
             FileFullPath = request.FileFullPath,
             MainWindowTitle = request.ForegroundWindowTitle
-        }, context.CancellationToken);
+        }, MapMode(request.Mode), context.CancellationToken);
         return new StartSessionResponse();
     }
 
     public override async Task<StopSessionResponse> StopSession(StopSessionRequest request, ServerCallContext context)
     {
-        var result = await _pipeline.StopSessionAsync(context.CancellationToken);
+        var result = await _pipeline.StopSessionAsync(MapMode(request.Mode), context.CancellationToken);
         var response = new StopSessionResponse();
         if (result != null)
         {
@@ -143,6 +143,12 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         PipelineState.Completed => PipelineStateDto.Completed,
         PipelineState.Error => PipelineStateDto.Error,
         _ => PipelineStateDto.Idle
+    };
+
+    private static SessionMode MapMode(SessionModeDto mode) => mode switch
+    {
+        SessionModeDto.Instruct => SessionMode.Instruct,
+        _ => SessionMode.Transcribe
     };
 
     private static PipelineResultDto MapResult(PipelineResult result) => new()

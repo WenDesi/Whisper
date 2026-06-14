@@ -28,8 +28,8 @@ public partial class FloatingDockWindow : Window
 
     public event EventHandler? OpenMainWindowRequested;
     public event EventHandler? SingleClicked;
-    public event EventHandler? PushToTalkStarted;
-    public event EventHandler? PushToTalkReleased;
+    public event EventHandler? RecordStarted;
+    public event EventHandler? RecordReleased;
 
     private ContextMenu? _dockContextMenu;
     public ContextMenu? DockContextMenu
@@ -108,7 +108,7 @@ public partial class FloatingDockWindow : Window
             if (_isMouseDown && !_isDragging)
             {
                 _longPressActive = true;
-                PushToTalkStarted?.Invoke(this, EventArgs.Empty);
+                RecordStarted?.Invoke(this, EventArgs.Empty);
             }
         };
 
@@ -271,7 +271,7 @@ public partial class FloatingDockWindow : Window
         if (_longPressActive)
         {
             _longPressActive = false;
-            PushToTalkReleased?.Invoke(this, EventArgs.Empty);
+            RecordReleased?.Invoke(this, EventArgs.Empty);
             return;
         }
 

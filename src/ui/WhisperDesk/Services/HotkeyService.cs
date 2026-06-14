@@ -1,4 +1,5 @@
 using H.Hooks;
+using WhisperDesk.Core.Contract;
 using WhisperDesk.Models;
 using Microsoft.Extensions.Logging;
 using HKey = H.Hooks.Key;
@@ -11,11 +12,11 @@ public class HotkeyService : IDisposable
     private readonly HotkeySettings _settings;
     private LowLevelKeyboardHook? _keyboardHook;
 
-    private bool _pushToTalkActive;
+    private bool _recordingActive;
     private readonly HashSet<HKey> _pressedKeys = new();
 
-    public event EventHandler? PushToTalkPressed;
-    public event EventHandler? PushToTalkReleased;
+    public event EventHandler<SessionMode>? RecordPressed;
+    public event EventHandler<SessionMode>? RecordReleased;
     public event EventHandler? PasteHotkeyPressed;
 
     public HotkeyService(ILogger<HotkeyService> logger, HotkeySettings settings)
@@ -40,8 +41,8 @@ public class HotkeyService : IDisposable
         _keyboardHook.Up += OnKeyUp;
         _keyboardHook.Start();
 
-        _logger.LogInformation("Hotkey service started. Push-to-talk: {PTT}, Paste: {Paste}",
-            _settings.PushToTalk, _settings.PasteTranscription);
+        _logger.LogInformation("Hotkey service started. Transcribe: {Transcribe}, Instruct: {Instruct}, Paste: {Paste}",
+            _settings.Transcribe, _settings.Instruct, _settings.PasteTranscription);
     }
 
     private void OnKeyDown(object? sender, KeyboardEventArgs e)
@@ -51,18 +52,32 @@ public class HotkeyService : IDisposable
             _pressedKeys.Add(key);
         }
 
-        // Check push-to-talk
-        if (!_pushToTalkActive && IsHotkeyPressed(_settings.PushToTalk))
+        // Recording activates when EITHER hotkey is pressed.
+        // Instruct (the more specific binding) is checked first so RightAlt+Shift
+        // is recognized as Instruct rather than as Transcribe + extra modifier.
+        if (!_recordingActive)
         {
-            _pushToTalkActive = true;
-            e.IsHandled = true;
-            _logger.LogDebug("Push-to-talk activated");
-            PushToTalkPressed?.Invoke(this, EventArgs.Empty);
-            return;
+            if (IsHotkeyPressed(_settings.Instruct))
+            {
+                _recordingActive = true;
+                e.IsHandled = true;
+                _logger.LogDebug("Recording activated (mode=Instruct)");
+                RecordPressed?.Invoke(this, SessionMode.Instruct);
+                return;
+            }
+            if (IsHotkeyPressed(_settings.Transcribe))
+            {
+                _recordingActive = true;
+                e.IsHandled = true;
+                _logger.LogDebug("Recording activated (mode=Transcribe)");
+                RecordPressed?.Invoke(this, SessionMode.Transcribe);
+                return;
+            }
         }
 
-        // While push-to-talk is held, swallow repeat events for the PTT key
-        if (_pushToTalkActive && ContainsPushToTalkKey(e))
+        // While recording is active, swallow repeat events for any key that
+        // is part of either hotkey so the keystroke doesn't leak.
+        if (_recordingActive && ContainsAnyRecordingKey(e))
         {
             e.IsHandled = true;
             return;
@@ -79,52 +94,74 @@ public class HotkeyService : IDisposable
 
     private void OnKeyUp(object? sender, KeyboardEventArgs e)
     {
-        bool containsPttKey = ContainsPushToTalkKey(e);
+        bool containsRecordingKey = ContainsAnyRecordingKey(e);
 
         foreach (var key in e.Keys.Values)
         {
             _pressedKeys.Remove(key);
         }
 
-        // Check if push-to-talk was released
-        if (_pushToTalkActive && !IsHotkeyPressed(_settings.PushToTalk))
+        if (_recordingActive)
         {
-            _pushToTalkActive = false;
-            e.IsHandled = true;
-            _logger.LogDebug("Push-to-talk released");
-            PushToTalkReleased?.Invoke(this, EventArgs.Empty);
-            return;
-        }
+            // Recording ends only once neither hotkey is held anymore.
+            var instructHeld = IsHotkeyPressed(_settings.Instruct);
+            var transcribeHeld = IsHotkeyPressed(_settings.Transcribe);
 
-        // Swallow any PTT-related key release while PTT is still active
-        if (_pushToTalkActive && containsPttKey)
-        {
-            e.IsHandled = true;
+            if (!instructHeld && !transcribeHeld)
+            {
+                _recordingActive = false;
+                e.IsHandled = true;
+                // Re-evaluate mode at release time: if Shift was held when the
+                // last key went up, we treat the session as Instruct.
+                // ContainsAnyRecordingKey already consumed the released keys
+                // from _pressedKeys, so we check what was held just before.
+                var releaseMode = DetermineReleaseMode(e);
+                _logger.LogDebug("Recording released (mode={Mode})", releaseMode);
+                RecordReleased?.Invoke(this, releaseMode);
+                return;
+            }
+
+            // Still holding part of a hotkey — swallow this release.
+            if (containsRecordingKey)
+            {
+                e.IsHandled = true;
+            }
         }
     }
 
     /// <summary>
-    /// Check if the keyboard event contains any key that is part of the push-to-talk hotkey.
+    /// Decide the release-time mode. The keys in <paramref name="e"/> were just
+    /// released and have already been removed from _pressedKeys. Reconstruct the
+    /// pressed-set as it was at the moment of release and test against Instruct.
     /// </summary>
-    private bool ContainsPushToTalkKey(KeyboardEventArgs e)
+    private SessionMode DetermineReleaseMode(KeyboardEventArgs e)
     {
-        var pttParts = _settings.PushToTalk.Split('+').Select(p => p.Trim().ToLowerInvariant());
-        foreach (var part in pttParts)
+        var atReleaseInstant = new HashSet<HKey>(_pressedKeys);
+        foreach (var key in e.Keys.Values)
         {
-            HKey? targetKey = part switch
-            {
-                "ctrl" or "control" => HKey.Ctrl,
-                "lctrl" or "leftctrl" => HKey.LeftCtrl,
-                "rctrl" or "rightctrl" => HKey.RightCtrl,
-                "shift" => HKey.Shift,
-                "lshift" or "leftshift" => HKey.LeftShift,
-                "rshift" or "rightshift" => HKey.RightShift,
-                "alt" => HKey.Alt,
-                "lalt" or "leftalt" => HKey.LeftAlt,
-                "ralt" or "rightalt" => HKey.RightAlt,
-                _ => Enum.TryParse<HKey>(part, true, out var k) ? k : null
-            };
+            atReleaseInstant.Add(key);
+        }
+        return IsHotkeyPressedAgainst(_settings.Instruct, atReleaseInstant)
+            ? SessionMode.Instruct
+            : SessionMode.Transcribe;
+    }
 
+    /// <summary>
+    /// Check if the keyboard event contains any key that is part of EITHER
+    /// recording hotkey. Used to swallow repeat down/up events while recording.
+    /// </summary>
+    private bool ContainsAnyRecordingKey(KeyboardEventArgs e)
+    {
+        return ContainsHotkeyKey(_settings.Transcribe, e)
+            || ContainsHotkeyKey(_settings.Instruct, e);
+    }
+
+    private static bool ContainsHotkeyKey(string hotkeyString, KeyboardEventArgs e)
+    {
+        var parts = hotkeyString.Split('+').Select(p => p.Trim().ToLowerInvariant());
+        foreach (var part in parts)
+        {
+            var targetKey = ParseKey(part);
             if (targetKey == null) continue;
 
             foreach (var eventKey in e.Keys.Values)
@@ -133,39 +170,30 @@ public class HotkeyService : IDisposable
                 if (targetKey.Value == HKey.RightAlt && (eventKey == HKey.Alt || eventKey == HKey.RightAlt)) return true;
                 if (targetKey.Value == HKey.LeftAlt && (eventKey == HKey.Alt || eventKey == HKey.LeftAlt)) return true;
                 if (targetKey.Value == HKey.Alt && (eventKey == HKey.Alt || eventKey == HKey.LeftAlt || eventKey == HKey.RightAlt)) return true;
+                if (targetKey.Value == HKey.Shift && (eventKey == HKey.Shift || eventKey == HKey.LeftShift || eventKey == HKey.RightShift)) return true;
+                if (targetKey.Value == HKey.Ctrl && (eventKey == HKey.Ctrl || eventKey == HKey.LeftCtrl || eventKey == HKey.RightCtrl)) return true;
             }
         }
         return false;
     }
 
-    private bool IsHotkeyPressed(string hotkeyString)
+    private bool IsHotkeyPressed(string hotkeyString) => IsHotkeyPressedAgainst(hotkeyString, _pressedKeys);
+
+    private static bool IsHotkeyPressedAgainst(string hotkeyString, IReadOnlySet<HKey> pressed)
     {
         var parts = hotkeyString.Split('+').Select(p => p.Trim()).ToArray();
 
         foreach (var part in parts)
         {
-            var key = part.ToLowerInvariant() switch
-            {
-                "ctrl" or "control" => HKey.Ctrl,
-                "lctrl" or "leftctrl" => HKey.LeftCtrl,
-                "rctrl" or "rightctrl" => HKey.RightCtrl,
-                "shift" => HKey.Shift,
-                "lshift" or "leftshift" => HKey.LeftShift,
-                "rshift" or "rightshift" => HKey.RightShift,
-                "alt" => HKey.Alt,
-                "lalt" or "leftalt" => HKey.LeftAlt,
-                "ralt" or "rightalt" => HKey.RightAlt,
-                _ => Enum.TryParse<HKey>(part, true, out var k) ? k : (HKey?)null
-            };
-
+            var key = ParseKey(part.ToLowerInvariant());
             if (key == null) return false;
 
             bool isPressed = key.Value switch
             {
-                HKey.Ctrl => _pressedKeys.Contains(HKey.Ctrl) || _pressedKeys.Contains(HKey.LeftCtrl) || _pressedKeys.Contains(HKey.RightCtrl),
-                HKey.Shift => _pressedKeys.Contains(HKey.Shift) || _pressedKeys.Contains(HKey.LeftShift) || _pressedKeys.Contains(HKey.RightShift),
-                HKey.Alt => _pressedKeys.Contains(HKey.Alt) || _pressedKeys.Contains(HKey.LeftAlt) || _pressedKeys.Contains(HKey.RightAlt),
-                _ => _pressedKeys.Contains(key.Value)
+                HKey.Ctrl => pressed.Contains(HKey.Ctrl) || pressed.Contains(HKey.LeftCtrl) || pressed.Contains(HKey.RightCtrl),
+                HKey.Shift => pressed.Contains(HKey.Shift) || pressed.Contains(HKey.LeftShift) || pressed.Contains(HKey.RightShift),
+                HKey.Alt => pressed.Contains(HKey.Alt) || pressed.Contains(HKey.LeftAlt) || pressed.Contains(HKey.RightAlt),
+                _ => pressed.Contains(key.Value)
             };
 
             if (!isPressed) return false;
@@ -173,6 +201,20 @@ public class HotkeyService : IDisposable
 
         return true;
     }
+
+    private static HKey? ParseKey(string part) => part switch
+    {
+        "ctrl" or "control" => HKey.Ctrl,
+        "lctrl" or "leftctrl" => HKey.LeftCtrl,
+        "rctrl" or "rightctrl" => HKey.RightCtrl,
+        "shift" => HKey.Shift,
+        "lshift" or "leftshift" => HKey.LeftShift,
+        "rshift" or "rightshift" => HKey.RightShift,
+        "alt" => HKey.Alt,
+        "lalt" or "leftalt" => HKey.LeftAlt,
+        "ralt" or "rightalt" => HKey.RightAlt,
+        _ => Enum.TryParse<HKey>(part, true, out var k) ? k : null
+    };
 
     public void Stop()
     {

@@ -20,9 +20,9 @@ public class ServerShutdownTests : IDisposable
         Directory.CreateDirectory(_configDir);
         File.WriteAllText(Path.Combine(_configDir, "appsettings.json"), """
         {
-            "Transcription": { "SpeechProvider": "AzureSpeech", "CleanupProvider": "AzureOpenAI", "Language": "zh" },
+            "Transcription": { "SpeechProvider": "AzureSpeech", "CleanupProvider": "OpenAI", "Language": "zh" },
             "AzureSpeech": { "Endpoint": "https://dummy", "SubscriptionKey": "dummy", "Region": "eastus" },
-            "AzureOpenAI": { "Endpoint": "https://dummy", "ApiKey": "dummy", "ChatDeployment": "dummy" },
+            "Llm": { "Endpoint": "https://dummy", "ApiKey": "dummy", "Model": "dummy" },
             "Audio": { "SampleRate": 16000, "Channels": 1, "BitsPerSample": 16 }
         }
         """);
