@@ -1,10 +1,13 @@
 using System.Collections.Concurrent;
+using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace WhisperDesk.Logging;
 
 public sealed class FileLoggerProvider : ILoggerProvider
 {
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     private readonly string _filePath;
     private readonly LogLevel _minLevel;
     private readonly ConcurrentDictionary<string, FileLogger> _loggers = new();
@@ -41,7 +44,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
     {
         lock (_writeLock)
         {
-            File.AppendAllText(_filePath, message + Environment.NewLine);
+            File.AppendAllText(_filePath, message + Environment.NewLine, Utf8NoBom);
         }
     }
 

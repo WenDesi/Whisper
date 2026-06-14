@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -43,6 +44,9 @@ public class WhisperDeskServer : IDisposable
 
     public static WhisperDeskServer Start(string configBasePath, int port = 50051)
     {
+        Console.OutputEncoding = Encoding.UTF8;
+        Console.InputEncoding = Encoding.UTF8;
+
         var address = $"http://localhost:{port}";
         var shutdownCts = new CancellationTokenSource();
 

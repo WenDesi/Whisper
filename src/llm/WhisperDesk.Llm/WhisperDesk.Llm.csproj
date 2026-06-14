@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
     <ProjectReference Include="$(LlmRoot)providers\WhisperDesk.Llm.Provider.OpenAI\WhisperDesk.Llm.Provider.OpenAI.csproj" />
+    <ProjectReference Include="$(LlmRoot)providers\WhisperDesk.Llm.Provider.Doubao\WhisperDesk.Llm.Provider.Doubao.csproj" />
   </ItemGroup>
 
   <ItemGroup>
