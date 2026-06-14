@@ -15,7 +15,6 @@ namespace WhisperDesk.Views;
 public partial class OverlayWindow : Window
 {
     private DispatcherTimer? _autoHideTimer;
-    private ClipboardPasteService? _pasteService;
 
     // Win32 window styles to prevent focus stealing
     [DllImport("user32.dll")]
@@ -129,11 +128,6 @@ public partial class OverlayWindow : Window
         PositionOnCurrentScreen();
 
         Show();
-    }
-
-    public void SetPasteService(ClipboardPasteService pasteService)
-    {
-        _pasteService = pasteService;
     }
 
     public void ShowForStatus(AppStatus status, string? errorMessage = null)

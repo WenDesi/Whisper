@@ -31,7 +31,6 @@ public class AppStatusTests
         // Hotkey defaults
         Assert.Equal("RightAlt", settings.Hotkeys.Transcribe);
         Assert.Equal("RightAlt+Shift", settings.Hotkeys.Instruct);
-        Assert.Equal("Ctrl+Shift+V", settings.Hotkeys.PasteTranscription);
 
         // Audio defaults
         Assert.Equal(16000, settings.Audio.SampleRate);

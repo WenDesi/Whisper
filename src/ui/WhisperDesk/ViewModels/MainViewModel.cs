@@ -19,7 +19,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ILogger<MainViewModel> _logger;
     private readonly IPipelineController _pipeline;
     private readonly HotkeyService _hotkeyService;
-    private readonly ClipboardPasteService _pasteService;
     private readonly GrpcDeviceClient _deviceClient;
     private readonly WhisperDeskSettings _appSettings;
     private CancellationTokenSource? _cts;
@@ -54,20 +53,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _hasError;
 
     public string PushToTalkHint => $"\U0001f3a4 Hold {_appSettings.Hotkeys.Transcribe} to dictate, {_appSettings.Hotkeys.Instruct} to instruct";
-    public string PasteHint => $"\U0001f4cb Press {_appSettings.Hotkeys.PasteTranscription} to paste";
 
     public MainViewModel(
         ILogger<MainViewModel> logger,
         IPipelineController pipeline,
         HotkeyService hotkeyService,
-        ClipboardPasteService pasteService,
         GrpcDeviceClient deviceClient,
         WhisperDeskSettings appSettings)
     {
         _logger = logger;
         _pipeline = pipeline;
         _hotkeyService = hotkeyService;
-        _pasteService = pasteService;
         _deviceClient = deviceClient;
         _appSettings = appSettings;
 
@@ -81,7 +77,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Wire hotkey events
         _hotkeyService.RecordPressed += OnRecordPressed;
         _hotkeyService.RecordReleased += OnRecordReleased;
-        _hotkeyService.PasteHotkeyPressed += OnPasteHotkeyPressed;
 
         _hotkeyService.Start();
         ForegroundWindowInfo.Configure(_logger);
@@ -220,15 +215,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 });
             }
         });
-    }
-
-    private async void OnPasteHotkeyPressed(object? sender, EventArgs e)
-    {
-        if (!string.IsNullOrEmpty(_pipeline.LastProcessedText))
-        {
-            _logger.LogDebug("[ViewModel] Paste hotkey pressed, invoking paste service");
-            await _pasteService.PasteToActiveWindowAsync();
-        }
     }
 
     [RelayCommand]
@@ -374,7 +360,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Unsubscribe hotkey events
         _hotkeyService.RecordPressed -= OnRecordPressed;
         _hotkeyService.RecordReleased -= OnRecordReleased;
-        _hotkeyService.PasteHotkeyPressed -= OnPasteHotkeyPressed;
 
         _cts?.Cancel();
         _cts?.Dispose();
