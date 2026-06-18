@@ -123,7 +123,8 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
 
                 <!-- Waveform bars (Listening state) -->
-                <StackPanel x:Name="WaveformPanel" Orientation="Horizontal" VerticalAlignment="Center"
+                <!-- Fixed-height host so animating bar heights never resize the window -->
+                <StackPanel x:Name="WaveformPanel" Orientation="Horizontal" Height="28" VerticalAlignment="Center"
                             Visibility="Collapsed" Margin="0,0,10,0">
                     <Rectangle x:Name="WaveBar1" Width="3" Height="4" RadiusX="1.5" RadiusY="1.5"
                                Fill="#B388FF" Margin="1,0" VerticalAlignment="Center"/>
