@@ -90,6 +90,9 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         void OnPartial(object? s, string text) =>
             channel.Writer.TryWrite(new PipelineEvent { PartialTranscript = new PartialTranscriptEvent { Text = text } });
 
+        void OnCleanupChunk(object? s, string text) =>
+            channel.Writer.TryWrite(new PipelineEvent { CleanupChunk = new CleanupChunkEvent { Text = text } });
+
         void OnCompleted(object? s, PipelineResult result) =>
             channel.Writer.TryWrite(new PipelineEvent { SessionCompleted = new SessionCompletedEvent { Result = MapResult(result) } });
 
@@ -110,6 +113,7 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
 
         _pipeline.StateChanged += OnStateChanged;
         _pipeline.PartialTranscriptUpdated += OnPartial;
+        _pipeline.CleanupChunkProduced += OnCleanupChunk;
         _pipeline.SessionCompleted += OnCompleted;
         _pipeline.ErrorOccurred += OnError;
         _pipeline.LocalCommandExecuted += OnLocalCommand;
@@ -128,6 +132,7 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         {
             _pipeline.StateChanged -= OnStateChanged;
             _pipeline.PartialTranscriptUpdated -= OnPartial;
+            _pipeline.CleanupChunkProduced -= OnCleanupChunk;
             _pipeline.SessionCompleted -= OnCompleted;
             _pipeline.ErrorOccurred -= OnError;
             _pipeline.LocalCommandExecuted -= OnLocalCommand;
