@@ -11,6 +11,8 @@ public class OpenAILlmProvider : ILlmProvider
 {
     private readonly ILogger<OpenAILlmProvider> _logger;
     private readonly OpenAILlmConfig _config;
+    private readonly ChatClient _client;
+    private int _warmingUp;
 
     public string Name => "OpenAI";
 
@@ -18,6 +20,30 @@ public class OpenAILlmProvider : ILlmProvider
     {
         _logger = logger;
         _config = config;
+        _client = CreateClient();
+    }
+
+    public async Task WarmUpAsync(CancellationToken ct = default)
+    {
+        // Skip if a warm-up is already in flight (rapid press/release shouldn't pile up requests).
+        if (Interlocked.CompareExchange(ref _warmingUp, 1, 0) != 0) return;
+
+        try
+        {
+            var messages = new List<ChatMessage> { new UserChatMessage("hi") };
+            var options = new ChatCompletionOptions { MaxOutputTokenCount = 1 };
+            await _client.CompleteChatAsync(messages, options, ct);
+            _logger.LogDebug("[OpenAI] Connection warmed up.");
+        }
+        catch (Exception ex)
+        {
+            // Warm-up is best-effort — never let it affect the real session.
+            _logger.LogDebug(ex, "[OpenAI] Warm-up failed (non-fatal).");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _warmingUp, 0);
+        }
     }
 
     public async Task<string> ProcessTextAsync(
@@ -29,8 +55,7 @@ public class OpenAILlmProvider : ILlmProvider
         _logger.LogInformation("[OpenAI] Processing text ({Length} chars) via {Model}.",
             userText.Length, _config.Model);
 
-        var chatClient = CreateClient();
-        return await CleanupText(chatClient, systemPrompt, userText, options, ct);
+        return await CleanupText(_client, systemPrompt, userText, options, ct);
     }
 
         public async Task<string> CleanupText(
@@ -76,7 +101,6 @@ public class OpenAILlmProvider : ILlmProvider
         _logger.LogInformation("[OpenAI] Streaming text ({Length} chars) via {Model}.",
             userText.Length, _config.Model);
 
-        var chatClient = CreateClient();
         var messages = new List<ChatMessage>
         {
             new SystemChatMessage(systemPrompt),
@@ -89,7 +113,7 @@ public class OpenAILlmProvider : ILlmProvider
             chatOptions.Temperature = temp;
         }
 
-        await foreach (var update in chatClient.CompleteChatStreamingAsync(messages, chatOptions, ct))
+        await foreach (var update in _client.CompleteChatStreamingAsync(messages, chatOptions, ct))
         {
             foreach (var part in update.ContentUpdate)
             {
@@ -111,7 +135,6 @@ public class OpenAILlmProvider : ILlmProvider
         _logger.LogInformation("[OpenAI] Starting agent loop ({Length} chars, {ToolCount} tools) via {Model}.",
             userText.Length, toolContext.Tools.Count, _config.Model);
 
-        var chatClient = CreateClient();
         var messages = new List<ChatMessage>
         {
             new SystemChatMessage(systemPrompt),
@@ -132,7 +155,7 @@ public class OpenAILlmProvider : ILlmProvider
         // Agent loop: keep sending until the LLM stops calling tools.
         while (true)
         {
-            var response = await chatClient.CompleteChatAsync(messages, chatOptions, ct);
+            var response = await _client.CompleteChatAsync(messages, chatOptions, ct);
             var completion = response.Value;
 
             _logger.LogInformation("[OpenAI] Turn {Turn}: FinishReason={FinishReason}, ContentCount={ContentCount}, ToolCallCount={ToolCallCount}",

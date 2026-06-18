@@ -28,6 +28,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly AudioDeviceService _audioDeviceService;
     private readonly ITranscriptionHistoryService _historyService;
     private readonly IReadOnlyDictionary<string, ILocalTool> _localTools;
+    private readonly ILlmProvider _llmProvider;
 
     private PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
@@ -55,6 +56,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     public event EventHandler<PipelineState>? StateChanged;
     public event EventHandler<string>? PartialTranscriptUpdated;
+    public event EventHandler<string>? CleanupChunkProduced;
     public event EventHandler<PipelineResult>? SessionCompleted;
     public event EventHandler<PipelineError>? ErrorOccurred;
     public event EventHandler<CommandEvent>? LocalCommandExecuted;
@@ -69,7 +71,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
         ITranscriptionHistoryService historyService,
         IEnumerable<IContextProvider> contextProviders,
         IEnumerable<IPostProcessingStage> postProcessingStages,
-        IEnumerable<ILocalTool> localTools)
+        IEnumerable<ILocalTool> localTools,
+        ILlmProvider llmProvider)
     {
         _logger = logger;
         _config = config;
@@ -80,6 +83,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
         _contextProviders = contextProviders;
         _postProcessingStages = postProcessingStages.OrderBy(s => s.Order).ToList();
         _localTools = localTools.ToDictionary(t => t.Name, StringComparer.Ordinal);
+        _llmProvider = llmProvider;
     }
 
     public async Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, SessionMode mode = SessionMode.Transcribe, CancellationToken ct = default)
@@ -105,6 +109,10 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 _sessionTextContext = textContext;
                 _foregroundWindowTitle = textContext?.MainWindowTitle ?? "";
                 _sessionMode = mode;
+
+                // Warm up the LLM connection now (fire-and-forget). By the time STT finishes and
+                // cleanup runs, DNS/TCP/TLS is established, cutting first-token latency.
+                _ = _llmProvider.WarmUpAsync(ct);
 
                 var audioFormat = new AudioFormat
                 {
@@ -185,12 +193,15 @@ public class StreamingPipeline : IPipelineController, IDisposable
             // 1. Stop mic capture
             _audioRouter.Stop();
 
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
             // 2. Signal end of audio to STT
             State = PipelineState.Transcribing;
             _sttProvider.SignalEndOfAudio();
 
             // 3. Get final transcript
             var rawTranscript = await _sttProvider.EndSessionAsync();
+            var sttMs = sw.ElapsedMilliseconds;
 
             // Unhook events
             _sttProvider.PartialResultReceived -= OnPartialResult;
@@ -208,10 +219,15 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
             // 4. Run post-processing stages
             State = PipelineState.PostProcessing;
+            var postStart = sw.ElapsedMilliseconds;
             var processedText = await RunPostProcessingAsync(rawTranscript, ct);
+            var postMs = sw.ElapsedMilliseconds - postStart;
 
             _logger.LogInformation("[Pipeline] Processed text ({Length} chars): {Text}",
                 processedText.Length, processedText);
+
+            _logger.LogInformation("[Timing] STT={SttMs}ms, PostProcessing={PostMs}ms, Total={TotalMs}ms (raw={RawLen} chars, final={FinalLen} chars)",
+                sttMs, postMs, sw.ElapsedMilliseconds, rawTranscript.Length, processedText.Length);
 
             // 5. Build result
             LastProcessedText = processedText;
@@ -310,6 +326,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
             Language = _config.Language,
             PhraseHints = _contextBuilder?.PhraseHints ?? [],
             ToolContext = BuildToolContext(ct),
+            OnCleanupChunk = chunk => CleanupChunkProduced?.Invoke(this, chunk),
         };
 
         var applicableStages = _postProcessingStages

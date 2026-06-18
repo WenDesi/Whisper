@@ -19,4 +19,11 @@ public class PostProcessingContext
 
     /// <summary>Tool context for LLM-driven post-processing stages.</summary>
     public required ToolContext ToolContext { get; init; }
+
+    /// <summary>
+    /// Optional sink for incremental output chunks as a streaming stage produces them.
+    /// When set, a stage that supports streaming should invoke this per chunk while still
+    /// returning the full accumulated text. Null for stages/modes that don't stream.
+    /// </summary>
+    public Action<string>? OnCleanupChunk { get; init; }
 }

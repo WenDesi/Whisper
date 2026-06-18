@@ -93,6 +93,7 @@ message PipelineEvent {
     SessionCompletedEvent session_completed = 3;
     ErrorEvent error = 4;
     LocalCommandEvent local_command = 5;
+    CleanupChunkEvent cleanup_chunk = 6;
   }
 }
 
@@ -101,6 +102,10 @@ message StateChangedEvent {
 }
 
 message PartialTranscriptEvent {
+  string text = 1;
+}
+
+message CleanupChunkEvent {
   string text = 1;
 }
 

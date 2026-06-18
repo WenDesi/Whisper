@@ -18,6 +18,7 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
 
     public event EventHandler<PipelineState>? StateChanged;
     public event EventHandler<string>? PartialTranscriptUpdated;
+    public event EventHandler<string>? CleanupChunkProduced;
     public event EventHandler<PipelineResult>? SessionCompleted;
     public event EventHandler<PipelineError>? ErrorOccurred;
     public event EventHandler<CommandEvent>? LocalCommandExecuted;
@@ -117,6 +118,9 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
                 break;
             case PipelineEvent.EventOneofCase.PartialTranscript:
                 PartialTranscriptUpdated?.Invoke(this, evt.PartialTranscript.Text);
+                break;
+            case PipelineEvent.EventOneofCase.CleanupChunk:
+                CleanupChunkProduced?.Invoke(this, evt.CleanupChunk.Text);
                 break;
             case PipelineEvent.EventOneofCase.SessionCompleted:
                 var result = MapResult(evt.SessionCompleted.Result);

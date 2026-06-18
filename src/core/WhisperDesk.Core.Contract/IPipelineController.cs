@@ -34,6 +34,9 @@ public interface IPipelineController : IDisposable
     /// <summary>Fired with partial transcript text during recognition.</summary>
     event EventHandler<string> PartialTranscriptUpdated;
 
+    /// <summary>Fired with each incremental chunk of cleaned text during streaming post-processing (Transcribe mode).</summary>
+    event EventHandler<string> CleanupChunkProduced;
+
     /// <summary>Fired when the pipeline completes with a result.</summary>
     event EventHandler<PipelineResult> SessionCompleted;
 
