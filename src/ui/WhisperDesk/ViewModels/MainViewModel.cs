@@ -1,7 +1,6 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading.Channels;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -26,11 +25,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _cts;
     private bool _isStopping;
     private WindowTextContext? _sessionTextContext;
-
-    // Streaming injection: a single-consumer queue drains cleanup chunks and injects them
-    // in arrival order off the UI thread. Created per Transcribe session.
-    private Channel<string>? _injectionChannel;
-    private volatile bool _streamedThisSession;
 
     [ObservableProperty]
     private AppStatus _status = AppStatus.Idle;
@@ -81,7 +75,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline.SessionCompleted += OnSessionCompleted;
         _pipeline.ErrorOccurred += OnPipelineError;
         _pipeline.PartialTranscriptUpdated += OnPartialTranscript;
-        _pipeline.CleanupChunkProduced += OnCleanupChunk;
         _pipeline.LocalCommandExecuted += OnLocalCommandExecuted;
 
         // Wire hotkey events
@@ -135,9 +128,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnSessionCompleted(object? sender, PipelineResult result)
     {
-        // Signal no more chunks are coming; the injection worker drains what's queued then exits.
-        _injectionChannel?.Writer.TryComplete();
-
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             RawText = result.RawTranscript;
@@ -148,9 +138,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 result.Mode, RawText.Length, CleanedText.Length);
         });
 
-        // If chunks streamed, they were already injected incrementally — don't re-inject the full text.
-        // The short-text-skip path produces no chunks, so _streamedThisSession stays false and we inject here.
-        if (result.Mode == SessionMode.Transcribe && !_streamedThisSession && !string.IsNullOrEmpty(result.ProcessedText))
+        // Inject the final text once. Streaming small SendInput chunks can confuse IMEs/editors.
+        if (result.Mode == SessionMode.Transcribe && !string.IsNullOrEmpty(result.ProcessedText))
         {
             Task.Run(() =>
             {
@@ -164,41 +153,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             });
         }
-    }
-
-    private void OnCleanupChunk(object? sender, string chunk)
-    {
-        _streamedThisSession = true;
-        // Thread-safe, ordered enqueue. The worker injects off-thread; never marshal injection to the UI dispatcher.
-        _injectionChannel?.Writer.TryWrite(chunk);
-    }
-
-    /// <summary>
-    /// Spin up a fresh single-consumer injection queue for a Transcribe session.
-    /// Each chunk is injected via SendInput in arrival order on a background worker.
-    /// </summary>
-    private void StartInjectionQueue()
-    {
-        _injectionChannel?.Writer.TryComplete();
-        _streamedThisSession = false;
-
-        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
-        _injectionChannel = channel;
-
-        _ = Task.Run(async () =>
-        {
-            await foreach (var chunk in channel.Reader.ReadAllAsync())
-            {
-                try
-                {
-                    _textInjection.InjectText(chunk);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[ViewModel] Chunk injection failed.");
-                }
-            }
-        });
     }
 
     private void OnPipelineError(object? sender, PipelineError error)
@@ -225,7 +179,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
             {
                 PartialText = string.Empty;
-                if (pressMode == SessionMode.Transcribe) StartInjectionQueue();
                 _sessionTextContext = ForegroundWindowInfo.GetTextContext();
                 _cts = new CancellationTokenSource();
                 _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, pressMode, _cts.Token));
@@ -280,7 +233,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         else
         {
             PartialText = string.Empty;
-            StartInjectionQueue();
             _sessionTextContext = ForegroundWindowInfo.GetTextContext();
             _cts = new CancellationTokenSource();
             _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, SessionMode.Transcribe, _cts.Token));
@@ -397,10 +349,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline.SessionCompleted -= OnSessionCompleted;
         _pipeline.ErrorOccurred -= OnPipelineError;
         _pipeline.PartialTranscriptUpdated -= OnPartialTranscript;
-        _pipeline.CleanupChunkProduced -= OnCleanupChunk;
         _pipeline.LocalCommandExecuted -= OnLocalCommandExecuted;
-
-        _injectionChannel?.Writer.TryComplete();
 
         // Unsubscribe hotkey events
         _hotkeyService.RecordPressed -= OnRecordPressed;
