@@ -136,6 +136,7 @@ public partial class OverlayWindow : Window
         {
             _autoHideTimer?.Stop();
             StopActiveAnimations();
+            ResetStatusTextLayout();
 
             switch (status)
             {
@@ -175,6 +176,42 @@ public partial class OverlayWindow : Window
         });
     }
 
+    public void ShowDraftPreview(string text, TimeSpan commitDelay)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                HideOverlay();
+                return;
+            }
+
+            _autoHideTimer?.Stop();
+            StopActiveAnimations();
+
+            SetAccentColor("#5B5FC7");
+
+            WaveformPanel.Visibility = Visibility.Collapsed;
+            SpinnerPanel.Visibility = Visibility.Collapsed;
+            CheckIcon.Visibility = Visibility.Collapsed;
+            ErrorIcon.Visibility = Visibility.Collapsed;
+
+            StatusText.TextWrapping = TextWrapping.Wrap;
+            StatusText.MaxWidth = Math.Min(680, Math.Max(220, SystemParameters.WorkArea.Width - 80));
+            StatusText.Text = text;
+            StartDraftProgress(commitDelay);
+
+            PositionOnCurrentScreen();
+            ApplyAdaptiveBorder();
+
+            if (RootContainer.Opacity < 0.1)
+            {
+                var fadeIn = (Storyboard)FindResource("FadeIn");
+                fadeIn.Begin(this);
+            }
+        });
+    }
+
     private void ShowListening()
     {
         SetAccentColor("#7C4DFF");
@@ -189,6 +226,31 @@ public partial class OverlayWindow : Window
         waveform.Begin(this, true);
         var glow = (Storyboard)FindResource("GlowPulse");
         glow.Begin(this, true);
+    }
+
+    private void ResetStatusTextLayout()
+    {
+        StatusText.TextWrapping = TextWrapping.NoWrap;
+        StatusText.MaxWidth = double.PositiveInfinity;
+        DraftProgressTrack.Visibility = Visibility.Collapsed;
+        DraftProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        DraftProgressScale.ScaleX = 1;
+    }
+
+    private void StartDraftProgress(TimeSpan duration)
+    {
+        DraftProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        DraftProgressScale.ScaleX = 1;
+        DraftProgressTrack.Visibility = Visibility.Visible;
+
+        var countdown = new DoubleAnimation
+        {
+            From = 1,
+            To = 0,
+            Duration = new Duration(duration),
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        DraftProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, countdown);
     }
 
     private void ShowTranscribing()

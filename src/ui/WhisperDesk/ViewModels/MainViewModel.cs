@@ -25,6 +25,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _cts;
     private bool _isStopping;
     private WindowTextContext? _sessionTextContext;
+    private readonly object _draftLock = new();
+    private PendingDraft? _pendingDraft;
+    private CancellationTokenSource? _draftCommitCts;
+    private SessionMode _activeSessionMode = SessionMode.Transcribe;
 
     [ObservableProperty]
     private AppStatus _status = AppStatus.Idle;
@@ -54,6 +58,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _hasError;
 
     public string PushToTalkHint => $"\U0001f3a4 Hold {_appSettings.Hotkeys.Transcribe} to dictate, {_appSettings.Hotkeys.Instruct} to instruct";
+
+    public event EventHandler<DraftPreview>? DraftPreviewChanged;
+    public event EventHandler? DraftPreviewClosed;
+
+    public sealed record DraftPreview(string Text, TimeSpan CommitDelay);
+
+    private sealed record PendingDraft(string Text, WindowTextContext Context, TimeSpan CommitDelay);
 
     public MainViewModel(
         ILogger<MainViewModel> logger,
@@ -138,20 +149,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 result.Mode, RawText.Length, CleanedText.Length);
         });
 
-        // Inject the final text once. Streaming small SendInput chunks can confuse IMEs/editors.
         if (result.Mode == SessionMode.Transcribe && !string.IsNullOrEmpty(result.ProcessedText))
         {
-            Task.Run(() =>
-            {
-                try
-                {
-                    _textInjection.InjectText(result.ProcessedText);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[ViewModel] Text injection failed.");
-                }
-            });
+            QueueTranscriptionDraft(result.ProcessedText);
+        }
+        else if (result.Mode == SessionMode.Instruct && !string.IsNullOrWhiteSpace(result.ProcessedText))
+        {
+            UpdatePendingDraft(result.ProcessedText);
+        }
+        else if (result.Mode == SessionMode.Instruct)
+        {
+            ReschedulePendingDraftCommitIfNeeded();
         }
     }
 
@@ -162,6 +170,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LastError = error.Message;
             HasError = true;
         });
+        ReschedulePendingDraftCommitIfNeeded();
     }
 
     private void OnPartialTranscript(object? sender, string partialText)
@@ -178,10 +187,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
             {
-                PartialText = string.Empty;
-                _sessionTextContext = ForegroundWindowInfo.GetTextContext();
-                _cts = new CancellationTokenSource();
-                _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, pressMode, _cts.Token));
+                var effectiveMode = pressMode == SessionMode.Transcribe && HasPendingDraft()
+                    ? SessionMode.Instruct
+                    : pressMode;
+                BeginSession(effectiveMode);
             }
         });
     }
@@ -198,12 +207,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 _isStopping = true;
                 _ = Task.Run(async () =>
                 {
+                    PipelineResult? result = null;
+                    var sessionMode = _activeSessionMode;
                     try
                     {
-                        await _pipeline.StopSessionAsync(releaseMode, _cts?.Token ?? CancellationToken.None);
+                        result = await _pipeline.StopSessionAsync(sessionMode, _cts?.Token ?? CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[ViewModel] Failed to stop session.");
                     }
                     finally
                     {
+                        if (sessionMode == SessionMode.Instruct && result is null)
+                        {
+                            ReschedulePendingDraftCommitIfNeeded();
+                        }
                         Application.Current?.Dispatcher.InvokeAsync(() => _isStopping = false);
                     }
                 });
@@ -222,7 +241,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 try
                 {
-                    await _pipeline.StopSessionAsync(SessionMode.Transcribe, _cts?.Token ?? CancellationToken.None);
+                    await _pipeline.StopSessionAsync(_activeSessionMode, _cts?.Token ?? CancellationToken.None);
                 }
                 finally
                 {
@@ -232,11 +251,207 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else
         {
-            PartialText = string.Empty;
-            _sessionTextContext = ForegroundWindowInfo.GetTextContext();
-            _cts = new CancellationTokenSource();
-            _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, SessionMode.Transcribe, _cts.Token));
+            BeginSession(SessionMode.Transcribe);
         }
+    }
+
+    private void BeginSession(SessionMode mode)
+    {
+        PartialText = string.Empty;
+        _activeSessionMode = mode;
+
+        if (mode == SessionMode.Instruct && TryBeginDraftCorrection(out var draftContext))
+        {
+            _sessionTextContext = draftContext;
+        }
+        else
+        {
+            if (mode == SessionMode.Transcribe)
+            {
+                CommitPendingDraftNow();
+            }
+            _sessionTextContext = ForegroundWindowInfo.GetTextContext();
+        }
+
+        _cts = new CancellationTokenSource();
+        _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, mode, _cts.Token));
+    }
+
+    private void QueueTranscriptionDraft(string text)
+    {
+        var context = _sessionTextContext;
+        if (context is null)
+        {
+            InjectTextAsync(text, context: null);
+            return;
+        }
+
+        var commitDelay = GetDraftCommitDelay(text);
+        lock (_draftLock)
+        {
+            _pendingDraft = new PendingDraft(text, context, commitDelay);
+        }
+
+        _logger.LogInformation("[Draft] Queued transcription draft ({Length} chars) for {DelayMs} ms.",
+            text.Length, commitDelay.TotalMilliseconds);
+        DraftPreviewChanged?.Invoke(this, new DraftPreview(text, commitDelay));
+        SchedulePendingDraftCommit();
+    }
+
+    private bool HasPendingDraft()
+    {
+        lock (_draftLock)
+        {
+            return _pendingDraft is not null;
+        }
+    }
+
+    private bool TryBeginDraftCorrection(out WindowTextContext draftContext)
+    {
+        lock (_draftLock)
+        {
+            if (_pendingDraft is null)
+            {
+                draftContext = null!;
+                return false;
+            }
+
+            CancelDraftCommitTimerCore();
+            draftContext = _pendingDraft.Context with
+            {
+                Selected = string.Empty,
+                DraftText = _pendingDraft.Text
+            };
+            _logger.LogInformation("[Draft] Starting command correction for pending draft ({Length} chars).",
+                _pendingDraft.Text.Length);
+            return true;
+        }
+    }
+
+    private void UpdatePendingDraft(string text)
+    {
+        var commitDelay = GetDraftCommitDelay(text);
+        lock (_draftLock)
+        {
+            if (_pendingDraft is null)
+            {
+                return;
+            }
+
+            _pendingDraft = _pendingDraft with { Text = text, CommitDelay = commitDelay };
+            _logger.LogInformation("[Draft] Updated pending draft ({Length} chars).", text.Length);
+            DraftPreviewChanged?.Invoke(this, new DraftPreview(text, commitDelay));
+        }
+
+        SchedulePendingDraftCommit();
+    }
+
+    private void ReschedulePendingDraftCommitIfNeeded()
+    {
+        lock (_draftLock)
+        {
+            if (_pendingDraft is null || _draftCommitCts is not null)
+            {
+                return;
+            }
+        }
+
+        SchedulePendingDraftCommit();
+    }
+
+    private void SchedulePendingDraftCommit()
+    {
+        var cts = new CancellationTokenSource();
+        TimeSpan commitDelay;
+        lock (_draftLock)
+        {
+            CancelDraftCommitTimerCore();
+            _draftCommitCts = cts;
+            commitDelay = _pendingDraft?.CommitDelay ?? GetDraftCommitDelay(string.Empty);
+        }
+
+        _ = CommitDraftAfterDelayAsync(cts, commitDelay);
+    }
+
+    private async Task CommitDraftAfterDelayAsync(CancellationTokenSource cts, TimeSpan commitDelay)
+    {
+        try
+        {
+            await Task.Delay(commitDelay, cts.Token);
+            var draft = TakePendingDraft(cts);
+            if (draft is not null)
+            {
+                DraftPreviewClosed?.Invoke(this, EventArgs.Empty);
+                InjectTextAsync(draft.Text, draft.Context);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            cts.Dispose();
+        }
+    }
+
+    private void CommitPendingDraftNow()
+    {
+        var draft = TakePendingDraft();
+        if (draft is not null)
+        {
+            DraftPreviewClosed?.Invoke(this, EventArgs.Empty);
+            InjectTextAsync(draft.Text, draft.Context);
+        }
+    }
+
+    private PendingDraft? TakePendingDraft(CancellationTokenSource? expectedCts = null)
+    {
+        lock (_draftLock)
+        {
+            if (expectedCts is not null && !ReferenceEquals(_draftCommitCts, expectedCts))
+            {
+                return null;
+            }
+
+            var draft = _pendingDraft;
+            _pendingDraft = null;
+            CancelDraftCommitTimerCore();
+            return draft;
+        }
+    }
+
+    private void CancelDraftCommitTimerCore()
+    {
+        var cts = _draftCommitCts;
+        _draftCommitCts = null;
+        cts?.Cancel();
+    }
+
+    private void InjectTextAsync(string text, WindowTextContext? context)
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                _textInjection.InjectText(text);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ViewModel] Text injection failed.");
+            }
+        });
+    }
+
+    private TimeSpan GetDraftCommitDelay(string text)
+    {
+        const double minimumMs = 1500;
+        const double maximumMs = 6000;
+        const double lengthScale = 180;
+
+        var length = string.IsNullOrWhiteSpace(text) ? 0 : text.Trim().Length;
+        var growth = 1 - Math.Exp(-length / lengthScale);
+
+        return TimeSpan.FromMilliseconds(minimumMs + (maximumMs - minimumMs) * growth);
     }
 
     [RelayCommand]
@@ -358,6 +573,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
+        CommitPendingDraftNow();
         GC.SuppressFinalize(this);
     }
 }

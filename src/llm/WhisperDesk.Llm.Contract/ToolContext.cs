@@ -25,4 +25,5 @@ public class ToolContext
 
     public required string SelectedText { get; init;}
     public required string MainWindowTitle { get; init;}
+    public string DraftText { get; init;} = string.Empty;
 }

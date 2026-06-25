@@ -70,6 +70,8 @@ public partial class App : Application
             var mainVm = _serviceProvider.GetRequiredService<MainViewModel>();
             _floatingDock.RecordStarted += (_, _) => mainVm.BeginPushToTalk();
             _floatingDock.RecordReleased += (_, _) => mainVm.EndPushToTalk();
+            mainVm.DraftPreviewChanged += (_, preview) => Dispatcher.InvokeAsync(() => _overlayWindow?.ShowDraftPreview(preview.Text, preview.CommitDelay));
+            mainVm.DraftPreviewClosed += (_, _) => Dispatcher.InvokeAsync(() => _overlayWindow?.HideOverlay());
 
             var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
             pipeline.StateChanged += (_, pipelineState) =>
@@ -91,17 +93,6 @@ public partial class App : Application
                     else
                     {
                         _overlayWindow?.ShowForStatus(appStatus);
-                    }
-                });
-            };
-
-            pipeline.SessionCompleted += (_, result) =>
-            {
-                Dispatcher.InvokeAsync(() =>
-                {
-                    if (!string.IsNullOrWhiteSpace(result.ProcessedText))
-                    {
-                        _floatingDock?.ShowBubble(result.ProcessedText);
                     }
                 });
             };
