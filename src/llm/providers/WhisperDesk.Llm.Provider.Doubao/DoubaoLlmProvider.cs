@@ -129,7 +129,10 @@ public class DoubaoLlmProvider : ILlmProvider
                 tool.Description,
                 BinaryData.FromString(tool.ParametersSchema)));
         }
-        chatOptions.ToolChoice = ChatToolChoice.CreateAutoChoice();
+        if (toolContext.Tools.Count > 0)
+        {
+            chatOptions.ToolChoice = ChatToolChoice.CreateAutoChoice();
+        }
 
         while (true)
         {

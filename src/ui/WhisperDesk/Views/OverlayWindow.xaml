@@ -120,59 +120,71 @@
             </Border.BorderBrush>
             <Border.BorderThickness>1</Border.BorderThickness>
 
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
 
-                <!-- Waveform bars (Listening state) -->
-                <!-- Fixed-height host so animating bar heights never resize the window -->
-                <StackPanel x:Name="WaveformPanel" Orientation="Horizontal" Height="28" VerticalAlignment="Center"
-                            Visibility="Collapsed" Margin="0,0,10,0">
-                    <Rectangle x:Name="WaveBar1" Width="3" Height="4" RadiusX="1.5" RadiusY="1.5"
-                               Fill="#B388FF" Margin="1,0" VerticalAlignment="Center"/>
-                    <Rectangle x:Name="WaveBar2" Width="3" Height="6" RadiusX="1.5" RadiusY="1.5"
-                               Fill="#9C64FF" Margin="1,0" VerticalAlignment="Center"/>
-                    <Rectangle x:Name="WaveBar3" Width="3" Height="8" RadiusX="1.5" RadiusY="1.5"
-                               Fill="#7C4DFF" Margin="1,0" VerticalAlignment="Center"/>
-                    <Rectangle x:Name="WaveBar4" Width="3" Height="6" RadiusX="1.5" RadiusY="1.5"
-                               Fill="#9C64FF" Margin="1,0" VerticalAlignment="Center"/>
-                    <Rectangle x:Name="WaveBar5" Width="3" Height="4" RadiusX="1.5" RadiusY="1.5"
-                               Fill="#B388FF" Margin="1,0" VerticalAlignment="Center"/>
+                    <!-- Waveform bars (Listening state) -->
+                    <!-- Fixed-height host so animating bar heights never resize the window -->
+                    <StackPanel x:Name="WaveformPanel" Orientation="Horizontal" Height="28" VerticalAlignment="Center"
+                                Visibility="Collapsed" Margin="0,0,10,0">
+                        <Rectangle x:Name="WaveBar1" Width="3" Height="4" RadiusX="1.5" RadiusY="1.5"
+                                   Fill="#B388FF" Margin="1,0" VerticalAlignment="Center"/>
+                        <Rectangle x:Name="WaveBar2" Width="3" Height="6" RadiusX="1.5" RadiusY="1.5"
+                                   Fill="#9C64FF" Margin="1,0" VerticalAlignment="Center"/>
+                        <Rectangle x:Name="WaveBar3" Width="3" Height="8" RadiusX="1.5" RadiusY="1.5"
+                                   Fill="#7C4DFF" Margin="1,0" VerticalAlignment="Center"/>
+                        <Rectangle x:Name="WaveBar4" Width="3" Height="6" RadiusX="1.5" RadiusY="1.5"
+                                   Fill="#9C64FF" Margin="1,0" VerticalAlignment="Center"/>
+                        <Rectangle x:Name="WaveBar5" Width="3" Height="4" RadiusX="1.5" RadiusY="1.5"
+                                   Fill="#B388FF" Margin="1,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- Spinner (Transcribing/Cleaning state) -->
+                    <Canvas x:Name="SpinnerPanel" Width="20" Height="20" Visibility="Collapsed" Margin="0,0,10,0">
+                        <Canvas.RenderTransform>
+                            <RotateTransform x:Name="SpinnerRotation" CenterX="10" CenterY="10"/>
+                        </Canvas.RenderTransform>
+                        <Ellipse Width="4" Height="4" Canvas.Left="8" Canvas.Top="0">
+                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot1" Color="#7C4DFF"/></Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Width="3.5" Height="3.5" Canvas.Left="15" Canvas.Top="3" Opacity="0.7">
+                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot2" Color="#7C4DFF"/></Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Width="3" Height="3" Canvas.Left="16.5" Canvas.Top="9" Opacity="0.4">
+                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot3" Color="#7C4DFF"/></Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Width="2.5" Height="2.5" Canvas.Left="14" Canvas.Top="15" Opacity="0.2">
+                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot4" Color="#7C4DFF"/></Ellipse.Fill>
+                        </Ellipse>
+                    </Canvas>
+
+                    <!-- Check mark (Done state) -->
+                    <TextBlock x:Name="CheckIcon" Text="✓" FontSize="16" FontWeight="Bold"
+                               Foreground="#69F0AE" VerticalAlignment="Center"
+                               Visibility="Collapsed" Margin="0,0,8,0"/>
+
+                    <!-- Error icon -->
+                    <TextBlock x:Name="ErrorIcon" Text="✕" FontSize="16" FontWeight="Bold"
+                               Foreground="#FF5252" VerticalAlignment="Center"
+                               Visibility="Collapsed" Margin="0,0,8,0"/>
+
+                    <!-- Status text -->
+                    <TextBlock x:Name="StatusText" Text="Listening..."
+                               Foreground="#E0E0E0" FontSize="13"
+                               FontFamily="Segoe UI" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Spinner (Transcribing/Cleaning state) -->
-                <Canvas x:Name="SpinnerPanel" Width="20" Height="20" Visibility="Collapsed" Margin="0,0,10,0">
-                    <Canvas.RenderTransform>
-                        <RotateTransform x:Name="SpinnerRotation" CenterX="10" CenterY="10"/>
-                    </Canvas.RenderTransform>
-                    <Ellipse Width="4" Height="4" Canvas.Left="8" Canvas.Top="0">
-                        <Ellipse.Fill><SolidColorBrush x:Name="SpinDot1" Color="#7C4DFF"/></Ellipse.Fill>
-                    </Ellipse>
-                    <Ellipse Width="3.5" Height="3.5" Canvas.Left="15" Canvas.Top="3" Opacity="0.7">
-                        <Ellipse.Fill><SolidColorBrush x:Name="SpinDot2" Color="#7C4DFF"/></Ellipse.Fill>
-                    </Ellipse>
-                    <Ellipse Width="3" Height="3" Canvas.Left="16.5" Canvas.Top="9" Opacity="0.4">
-                        <Ellipse.Fill><SolidColorBrush x:Name="SpinDot3" Color="#7C4DFF"/></Ellipse.Fill>
-                    </Ellipse>
-                    <Ellipse Width="2.5" Height="2.5" Canvas.Left="14" Canvas.Top="15" Opacity="0.2">
-                        <Ellipse.Fill><SolidColorBrush x:Name="SpinDot4" Color="#7C4DFF"/></Ellipse.Fill>
-                    </Ellipse>
-                </Canvas>
-
-                <!-- Check mark (Done state) -->
-                <TextBlock x:Name="CheckIcon" Text="✓" FontSize="16" FontWeight="Bold"
-                           Foreground="#69F0AE" VerticalAlignment="Center"
-                           Visibility="Collapsed" Margin="0,0,8,0"/>
-
-                <!-- Error icon -->
-                <TextBlock x:Name="ErrorIcon" Text="✕" FontSize="16" FontWeight="Bold"
-                           Foreground="#FF5252" VerticalAlignment="Center"
-                           Visibility="Collapsed" Margin="0,0,8,0"/>
-
-                <!-- Status text -->
-                <TextBlock x:Name="StatusText" Text="Listening..."
-                           Foreground="#E0E0E0" FontSize="13"
-                           FontFamily="Segoe UI" FontWeight="SemiBold"
-                           VerticalAlignment="Center"/>
-            </StackPanel>
+                <Border x:Name="DraftProgressTrack" Height="2" CornerRadius="1" VerticalAlignment="Bottom"
+                        Margin="0,0,0,-4" Background="#33FFFFFF" Visibility="Collapsed">
+                    <Border x:Name="DraftProgressFill" CornerRadius="1" HorizontalAlignment="Stretch"
+                            RenderTransformOrigin="0,0.5" Background="#D8D9FF">
+                        <Border.RenderTransform>
+                            <ScaleTransform x:Name="DraftProgressScale" ScaleX="1" ScaleY="1"/>
+                        </Border.RenderTransform>
+                    </Border>
+                </Border>
+            </Grid>
         </Border>
     </Grid>
 </Window>

@@ -22,6 +22,7 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         {
             Selected = request.Selected,
             FileFullPath = request.FileFullPath,
+            DraftText = request.DraftText,
             MainWindowTitle = request.ForegroundWindowTitle
         }, MapMode(request.Mode), context.CancellationToken);
         return new StartSessionResponse();

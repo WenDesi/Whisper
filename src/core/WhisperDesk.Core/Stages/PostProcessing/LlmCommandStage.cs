@@ -34,6 +34,14 @@ public class LlmCommandStage : IPostProcessingStage
         {1}
         """;
 
+    private const string DraftUserPromptTemplate = """
+        Here is the draft text:
+        <draft-text>{0}</draft-text>
+
+        User instruction:
+        <user-instruction>{1}</user-instruction>
+        """;
+
     public LlmCommandStage(ILogger<LlmCommandStage> logger, ILlmProvider llmProvider)
     {
         _logger = logger;
@@ -57,24 +65,47 @@ public class LlmCommandStage : IPostProcessingStage
 
         var systemPrompt = await SystemPromptTemplate.RenderAsync(new TemplateContext());
 
-        var selectedInner = string.IsNullOrWhiteSpace(toolContext.SelectedText)
-            ? "No text was selected. Apply the command to the entire transcript."
-            : toolContext.SelectedText;
-        var selectedText = $"<selected-text>{selectedInner}</selected-text>";
+        var isDraftMode = !string.IsNullOrWhiteSpace(toolContext.DraftText);
+        var userPrompt = isDraftMode
+            ? string.Format(DraftUserPromptTemplate, toolContext.DraftText, text)
+            : BuildNormalUserPrompt(toolContext.SelectedText, text);
 
         var toolNames = string.Join(", ", toolContext.Tools.Select(t => t.Name));
-        var userPrompt = string.Format(UserPromptTemplate, selectedText, $"<user-instruction>{text}</user-instruction>");
-
         _logger.LogDebug("[LlmCommand] Sending command to LLM. SystemPrompt={SystemPrompt}, UserPrompt={UserPrompt}, Tools={Tools}",
             systemPrompt, userPrompt, toolNames);
 
-        var result = await _llmProvider.ProcessCommandAsync(
-            systemPrompt,
-            userPrompt,
-            toolContext,
-            new LlmRequestOptions { Temperature = 0.5f },
-            ct);
+        string result;
+        try
+        {
+            result = await _llmProvider.ProcessCommandAsync(
+                systemPrompt,
+                userPrompt,
+                toolContext,
+                new LlmRequestOptions { Temperature = 0.5f },
+                ct);
+        }
+        catch (Exception ex) when (isDraftMode)
+        {
+            _logger.LogWarning(ex, "[LlmCommand] Draft correction failed; keeping original draft.");
+            return toolContext.DraftText;
+        }
+
+        if (isDraftMode && string.IsNullOrWhiteSpace(result))
+        {
+            _logger.LogWarning("[LlmCommand] Draft correction returned empty text; keeping original draft.");
+            return toolContext.DraftText;
+        }
+
         _logger.LogInformation("[LlmCommand] Done: {InLen} -> {OutLen} chars.", text.Length, result.Length);
         return result;
+    }
+
+    private static string BuildNormalUserPrompt(string selected, string instruction)
+    {
+        var selectedInner = string.IsNullOrWhiteSpace(selected)
+            ? "No text was selected. Apply the command to the entire transcript."
+            : selected;
+        var selectedText = $"<selected-text>{selectedInner}</selected-text>";
+        return string.Format(UserPromptTemplate, selectedText, $"<user-instruction>{instruction}</user-instruction>");
     }
 }

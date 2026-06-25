@@ -150,7 +150,10 @@ public class OpenAILlmProvider : ILlmProvider
                 tool.Description,
                 BinaryData.FromString(tool.ParametersSchema)));
         }
-        chatOptions.ToolChoice = ChatToolChoice.CreateAutoChoice();
+        if (toolContext.Tools.Count > 0)
+        {
+            chatOptions.ToolChoice = ChatToolChoice.CreateAutoChoice();
+        }
 
         // Agent loop: keep sending until the LLM stops calling tools.
         while (true)

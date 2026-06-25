@@ -38,7 +38,8 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
             ForegroundWindowTitle = textContext?.MainWindowTitle ?? "",
             FileFullPath = textContext?.FileFullPath ?? "",
             Selected = textContext?.Selected ?? "",
-            Mode = MapMode(mode)
+            Mode = MapMode(mode),
+            DraftText = textContext?.DraftText ?? ""
         }, cancellationToken: ct);
     }
 
