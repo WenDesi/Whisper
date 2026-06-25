@@ -35,7 +35,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
     private CancellationTokenSource? _sessionCts;
 
     private ConcurrentQueue<string> _results = new();
-    private string _lastPartialText = string.Empty;
     private TaskCompletionSource<bool>? _sessionCompleteTcs;
 
     public string Name => "Volcengine Doubao";
@@ -55,11 +54,11 @@ public class VolcengineSttProvider : IStreamingSttProvider
         _logger.LogInformation("[Volcengine] Starting session...");
 
         _results = new ConcurrentQueue<string>();
-        _lastPartialText = string.Empty;
         _sessionCompleteTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _audioChannel = Channel.CreateUnbounded<AudioChunk>(new UnboundedChannelOptions
+        _audioChannel = Channel.CreateBounded<AudioChunk>(new BoundedChannelOptions(500)
         {
+            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false
         });
@@ -95,7 +94,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
     {
         if (_audioChannel == null || _audioChannel.Writer.TryWrite(new AudioChunk(audioData.ToArray(), IsLast: false)) == false)
         {
-            _logger.LogWarning("[Volcengine] Audio channel closed, dropping chunk of {Size} bytes.", audioData.Length);
+            _logger.LogWarning("[Volcengine] Audio channel full or closed, dropping chunk of {Size} bytes.", audioData.Length);
         }
     }
 
@@ -139,12 +138,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
         var segments = _results.ToArray();
         var fullText = string.Join("", segments);
-        if (string.IsNullOrWhiteSpace(fullText) && !string.IsNullOrWhiteSpace(_lastPartialText))
-        {
-            fullText = _lastPartialText;
-            _logger.LogWarning("[Volcengine] No final segments received; using last partial transcript ({Length} chars).", fullText.Length);
-        }
-
         _logger.LogInformation("[Volcengine] Session ended. {Length} chars from {Segments} segments.",
             fullText.Length, segments.Length);
 
@@ -484,7 +477,6 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
                 if (!hasDefiniteUtterances && !string.IsNullOrWhiteSpace(resultText))
                 {
-                    _lastPartialText = resultText;
                     _logger.LogDebug("[Volcengine] Partial: {Text}", resultText);
                     PartialResultReceived?.Invoke(this, new SttPartialResult(resultText));
                 }
