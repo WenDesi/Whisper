@@ -10,6 +10,7 @@ using WhisperDesk.Server;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
 using WhisperDesk.Views;
+using WhisperDesk.Telemetry;
 using Microsoft.Extensions.Logging;
 
 namespace WhisperDesk.ViewModels;
@@ -28,6 +29,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly object _draftLock = new();
     private PendingDraft? _pendingDraft;
     private CancellationTokenSource? _draftCommitCts;
+    private System.Diagnostics.Activity? _recordingSessionActivity;
     private SessionMode _activeSessionMode = SessionMode.Transcribe;
 
     [ObservableProperty]
@@ -139,6 +141,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnSessionCompleted(object? sender, PipelineResult result)
     {
+        _recordingSessionActivity?.SetTag("session.result", "completed");
+        _recordingSessionActivity?.Dispose();
+        _recordingSessionActivity = null;
+
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             RawText = result.RawTranscript;
@@ -165,6 +171,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnPipelineError(object? sender, PipelineError error)
     {
+        _recordingSessionActivity?.SetTag("session.result", "error");
+        _recordingSessionActivity?.SetTag("error.stage", error.Stage);
+        _recordingSessionActivity?.Dispose();
+        _recordingSessionActivity = null;
+
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
             LastError = error.Message;
@@ -223,6 +234,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         {
                             ReschedulePendingDraftCommitIfNeeded();
                         }
+                        if (result is null)
+                        {
+                            _recordingSessionActivity?.SetTag("session.result", "empty");
+                            _recordingSessionActivity?.Dispose();
+                            _recordingSessionActivity = null;
+                        }
                         Application.Current?.Dispatcher.InvokeAsync(() => _isStopping = false);
                     }
                 });
@@ -241,7 +258,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 try
                 {
-                    await _pipeline.StopSessionAsync(_activeSessionMode, _cts?.Token ?? CancellationToken.None);
+                    var result = await _pipeline.StopSessionAsync(_activeSessionMode, _cts?.Token ?? CancellationToken.None);
+                    if (result is null)
+                    {
+                        _recordingSessionActivity?.SetTag("session.result", "empty");
+                        _recordingSessionActivity?.Dispose();
+                        _recordingSessionActivity = null;
+                    }
                 }
                 finally
                 {
@@ -257,24 +280,42 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void BeginSession(SessionMode mode)
     {
+        _recordingSessionActivity?.Dispose();
+        _recordingSessionActivity = WhisperDeskTelemetry.StartActivity("recording_session");
+        _recordingSessionActivity?.SetTag("session.mode", mode.ToString());
+
+        using var activity = WhisperDeskTelemetry.StartActivity("ui.begin_session");
+        activity?.SetTag("session.mode", mode.ToString());
         PartialText = string.Empty;
         _activeSessionMode = mode;
+        var pendingDraft = HasPendingDraft();
+        activity?.SetTag("draft.pending", pendingDraft);
 
         if (mode == SessionMode.Instruct && TryBeginDraftCorrection(out var draftContext))
         {
             _sessionTextContext = draftContext;
+            activity?.SetTag("context.source", "pending_draft");
         }
         else
         {
             if (mode == SessionMode.Transcribe)
             {
-                CommitPendingDraftNow();
+                using (WhisperDeskTelemetry.StartActivity("ui.commit_pending_draft"))
+                {
+                    CommitPendingDraftNow();
+                }
             }
             _sessionTextContext = ForegroundWindowInfo.GetTextContext();
+            activity?.SetTag("context.source", _sessionTextContext is null ? "none" : "foreground_window");
         }
 
         _cts = new CancellationTokenSource();
-        _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, mode, _cts.Token));
+        _ = Task.Run(async () =>
+        {
+            using var startSessionActivity = WhisperDeskTelemetry.StartActivity("ui.grpc.pipeline_start_session");
+            startSessionActivity?.SetTag("session.mode", mode.ToString());
+            await _pipeline.StartSessionAsync(_sessionTextContext, mode, _cts.Token);
+        });
     }
 
     private void QueueTranscriptionDraft(string text)
@@ -565,6 +606,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pipeline.ErrorOccurred -= OnPipelineError;
         _pipeline.PartialTranscriptUpdated -= OnPartialTranscript;
         _pipeline.LocalCommandExecuted -= OnLocalCommandExecuted;
+        _recordingSessionActivity?.Dispose();
+        _recordingSessionActivity = null;
 
         // Unsubscribe hotkey events
         _hotkeyService.RecordPressed -= OnRecordPressed;

@@ -11,6 +11,7 @@ using WhisperDesk.Core.Contract;
 using WhisperDesk.Server;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
+using WhisperDesk.Telemetry;
 using WhisperDesk.ViewModels;
 using WhisperDesk.Views;
 
@@ -22,9 +23,9 @@ public partial class App : Application
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
-    private FloatingDockWindow? _floatingDock;
     private WhisperDeskServer? _server;
     private GrpcPipelineClient? _grpcClient;
+    private WhisperDeskTelemetryRuntime? _telemetryRuntime;
     private Mutex? _singleInstanceMutex;
     private int _exitRequested;
 
@@ -43,6 +44,7 @@ public partial class App : Application
         try
         {
             var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName)!;
+            _telemetryRuntime = WhisperDeskTelemetryRuntime.Start(BuildConfiguration(exeDir));
 
             // 1. Start backend server (owns Core, STT, LLM, Pipeline, gRPC)
             _server = WhisperDeskServer.Start(exeDir);
@@ -57,19 +59,11 @@ public partial class App : Application
 
             _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
             _mainWindow.Show();
-            _mainWindow.IsVisibleChanged += OnMainWindowVisibilityChanged;
 
             _overlayWindow = new OverlayWindow();
             _overlayWindow.Initialize();
 
-            _floatingDock = new FloatingDockWindow();
-            _floatingDock.OpenMainWindowRequested += (_, _) => _mainWindow?.ShowFromTray();
-            _floatingDock.SingleClicked += OnDockSingleClicked;
-            _floatingDock.DockContextMenu = BuildAppMenu();
-
             var mainVm = _serviceProvider.GetRequiredService<MainViewModel>();
-            _floatingDock.RecordStarted += (_, _) => mainVm.BeginPushToTalk();
-            _floatingDock.RecordReleased += (_, _) => mainVm.EndPushToTalk();
             mainVm.DraftPreviewChanged += (_, preview) => Dispatcher.InvokeAsync(() => _overlayWindow?.ShowDraftPreview(preview.Text, preview.CommitDelay));
             mainVm.DraftPreviewClosed += (_, _) => Dispatcher.InvokeAsync(() => _overlayWindow?.HideOverlay());
 
@@ -83,8 +77,6 @@ public partial class App : Application
                     {
                         _trayIcon.ToolTipText = appStatus.ToTrayTooltip();
                     }
-
-                    _floatingDock?.ApplyStatus(appStatus);
 
                     if (appStatus == AppStatus.Idle)
                     {
@@ -114,11 +106,7 @@ public partial class App : Application
 
     private static void ConfigureUiServices(IServiceCollection services, string exeDir, string serverAddress, GrpcPipelineClient grpcClient)
     {
-        var config = new ConfigurationBuilder()
-            .SetBasePath(exeDir)
-            .AddJsonFile("appsettings.json", optional: false)
-            .AddJsonFile("appsettings.Development.json", optional: true)
-            .Build();
+        var config = BuildConfiguration(exeDir);
 
         var settings = new WhisperDeskSettings();
         config.Bind(settings);
@@ -143,29 +131,6 @@ public partial class App : Application
         services.AddSingleton<MainWindow>();
     }
 
-    private void OnMainWindowVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (_floatingDock == null) return;
-        if (_mainWindow?.IsVisible == true)
-        {
-            _floatingDock.Hide();
-        }
-        else
-        {
-            _floatingDock.Show();
-        }
-    }
-
-    private void OnDockSingleClicked(object? sender, EventArgs e)
-    {
-        var pipeline = _serviceProvider?.GetService<IPipelineController>();
-        var text = pipeline?.LastProcessedText;
-        if (!string.IsNullOrWhiteSpace(text))
-        {
-            _floatingDock?.ShowBubble(text);
-        }
-    }
-
     private static AppStatus MapToAppStatus(PipelineState state) => state switch
     {
         PipelineState.Idle => AppStatus.Idle,
@@ -176,6 +141,15 @@ public partial class App : Application
         PipelineState.Error => AppStatus.Error,
         _ => AppStatus.Idle
     };
+
+    private static IConfigurationRoot BuildConfiguration(string exeDir)
+    {
+        return new ConfigurationBuilder()
+            .SetBasePath(exeDir)
+            .AddJsonFile("appsettings.json", optional: false)
+            .AddJsonFile("appsettings.Development.json", optional: true)
+            .Build();
+    }
 
     private void SetupTrayIcon()
     {
@@ -226,15 +200,6 @@ public partial class App : Application
 
         _overlayWindow?.Close();
         _overlayWindow = null;
-        if (_floatingDock != null)
-        {
-            _floatingDock.Close();
-            _floatingDock = null;
-        }
-        if (_mainWindow != null)
-        {
-            _mainWindow.IsVisibleChanged -= OnMainWindowVisibilityChanged;
-        }
         _mainWindow?.ForceClose();
         _mainWindow = null;
 
@@ -244,6 +209,8 @@ public partial class App : Application
         _grpcClient = null;
         var server = _server;
         _server = null;
+        var telemetryRuntime = _telemetryRuntime;
+        _telemetryRuntime = null;
         var singleInstanceMutex = _singleInstanceMutex;
         _singleInstanceMutex = null;
 
@@ -263,6 +230,15 @@ public partial class App : Application
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[WhisperDesk] Shutdown error disposing gRPC client: {ex.Message}");
+        }
+
+        try
+        {
+            telemetryRuntime?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[WhisperDesk] Shutdown error disposing telemetry: {ex.Message}");
         }
 
         try

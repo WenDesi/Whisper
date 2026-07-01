@@ -44,6 +44,7 @@
 
   <ItemGroup>
     <ProjectReference Include="$(CoreRoot)WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
+    <ProjectReference Include="$(SharedRoot)WhisperDesk.Telemetry\WhisperDesk.Telemetry.csproj" />
     <ProjectReference Include="$(SrcRoot)server\WhisperDesk.Server\WhisperDesk.Server.csproj" />
   </ItemGroup>
 

@@ -5,6 +5,7 @@
 
   <ItemGroup>
     <ProjectReference Include="$(CoreRoot)WhisperDesk.Core.Contract\WhisperDesk.Core.Contract.csproj" />
+    <ProjectReference Include="$(SharedRoot)WhisperDesk.Telemetry\WhisperDesk.Telemetry.csproj" />
     <ProjectReference Include="$(SttRoot)WhisperDesk.Stt.Contract\WhisperDesk.Stt.Contract.csproj" />
     <ProjectReference Include="$(LlmRoot)WhisperDesk.Llm.Contract\WhisperDesk.Llm.Contract.csproj" />
     <ProjectReference Include="$(TranscriptRoot)WhisperDesk.Transcript.Contract\WhisperDesk.Transcript.Contract.csproj" />

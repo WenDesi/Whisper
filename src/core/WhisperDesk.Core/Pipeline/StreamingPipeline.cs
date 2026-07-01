@@ -7,6 +7,7 @@ using WhisperDesk.Transcript.Contract;
 using System.Collections.Concurrent;
 using WhisperDesk.Llm.Contract;
 using WhisperDesk.Core.Tools;
+using WhisperDesk.Telemetry;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -104,6 +105,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
             try
             {
+                using var activity = WhisperDeskTelemetry.StartActivity("server.pipeline.start_session");
+                activity?.SetTag("session.mode", mode.ToString());
                 _logger.LogInformation("[Pipeline] Starting session (mode={Mode})...", mode);
                 State = PipelineState.Listening;
                 _sessionTextContext = textContext;
@@ -122,8 +125,12 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 };
 
                 // 1. Start mic capture IMMEDIATELY (buffered)
-                var deviceNumber = _audioDeviceService.ResolveWaveInDeviceNumber(_config.AudioDeviceId);
-                _audioRouter.Start(audioFormat, deviceNumber);
+                using (var audioActivity = WhisperDeskTelemetry.StartActivity("server.pipeline.start_audio_capture"))
+                {
+                    var deviceNumber = _audioDeviceService.ResolveWaveInDeviceNumber(_config.AudioDeviceId);
+                    audioActivity?.SetTag("audio.device_number", deviceNumber);
+                    _audioRouter.Start(audioFormat, deviceNumber);
+                }
 
                 // 2. Prepare context + start STT in parallel
                 _contextBuilder = new SessionContextBuilder();
@@ -132,7 +139,10 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 _contextBuilder.SetMetadata("foregroundWindowTitle", _foregroundWindowTitle);
 
                 // Run context providers sequentially by Order (non-blocking)
-                await PrepareContextAsync(_contextBuilder, ct);
+                using (WhisperDeskTelemetry.StartActivity("server.pipeline.prepare_context"))
+                {
+                    await PrepareContextAsync(_contextBuilder, ct);
+                }
 
                 // 3. Build STT session options with collected context
                 var sttOptions = new SttSessionOptions
@@ -148,10 +158,21 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 _sttProvider.ErrorOccurred += OnSttError;
 
                 // Start STT session
-                await _sttProvider.StartSessionAsync(sttOptions, ct);
+                using (var sttActivity = WhisperDeskTelemetry.StartActivity("server.pipeline.start_stt_session"))
+                {
+                    sttActivity?.SetTag("stt.phrase_hints", sttOptions.PhraseHints.Count);
+                    sttActivity?.SetTag("stt.dialog_turns", sttOptions.DialogContext.Count);
+                    await _sttProvider.StartSessionAsync(sttOptions, ct);
+                }
 
                 // 4. Connect audio router to STT provider (flushes buffered audio)
-                _audioRouter.SetSink(_sttProvider.PushAudio);
+                using (WhisperDeskTelemetry.StartActivity("server.pipeline.connect_audio_sink"))
+                {
+                    _audioRouter.SetSink(_sttProvider.PushAudio);
+                }
+
+                activity?.SetTag("stt.phrase_hints", _contextBuilder.PhraseHints.Count);
+                activity?.SetTag("stt.dialog_turns", _contextBuilder.DialogTurns.Count);
 
                 _logger.LogInformation("[Pipeline] Session started. Streaming audio to STT.");
             }
@@ -189,19 +210,28 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 _sessionMode = modeOverride.Value;
             }
             _logger.LogInformation("[Pipeline] Stopping session (mode={Mode})...", _sessionMode);
+            using var activity = WhisperDeskTelemetry.StartActivity("server.pipeline.stop_session");
+            activity?.SetTag("session.mode", _sessionMode.ToString());
 
             // 1. Stop mic capture
-            _audioRouter.Stop();
-
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            using (WhisperDeskTelemetry.StartActivity("server.pipeline.stop_audio_capture"))
+            {
+                _audioRouter.Stop();
+            }
 
             // 2. Signal end of audio to STT
             State = PipelineState.Transcribing;
-            _sttProvider.SignalEndOfAudio();
+            using (WhisperDeskTelemetry.StartActivity("server.pipeline.signal_end_of_audio"))
+            {
+                _sttProvider.SignalEndOfAudio();
+            }
 
             // 3. Get final transcript
-            var rawTranscript = await _sttProvider.EndSessionAsync();
-            var sttMs = sw.ElapsedMilliseconds;
+            string rawTranscript;
+            using (WhisperDeskTelemetry.StartActivity("server.pipeline.end_stt_session"))
+            {
+                rawTranscript = await _sttProvider.EndSessionAsync();
+            }
 
             // Unhook events
             _sttProvider.PartialResultReceived -= OnPartialResult;
@@ -219,15 +249,16 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
             // 4. Run post-processing stages
             State = PipelineState.PostProcessing;
-            var postStart = sw.ElapsedMilliseconds;
-            var processedText = await RunPostProcessingAsync(rawTranscript, ct);
-            var postMs = sw.ElapsedMilliseconds - postStart;
+            string processedText;
+            using (WhisperDeskTelemetry.StartActivity("server.pipeline.postprocess"))
+            {
+                processedText = await RunPostProcessingAsync(rawTranscript, ct);
+            }
 
             _logger.LogInformation("[Pipeline] Processed text ({Length} chars): {Text}",
                 processedText.Length, processedText);
-
-            _logger.LogInformation("[Timing] STT={SttMs}ms, PostProcessing={PostMs}ms, Total={TotalMs}ms (raw={RawLen} chars, final={FinalLen} chars)",
-                sttMs, postMs, sw.ElapsedMilliseconds, rawTranscript.Length, processedText.Length);
+            activity?.SetTag("transcript.raw_length", rawTranscript.Length);
+            activity?.SetTag("transcript.processed_length", processedText.Length);
 
             // 5. Build result
             LastProcessedText = processedText;
@@ -309,7 +340,12 @@ public class StreamingPipeline : IPipelineController, IDisposable
             try
             {
                 _logger.LogDebug("[Pipeline] Running context provider: {Name} (order={Order})", provider.Name, provider.Order);
+                using var providerActivity = WhisperDeskTelemetry.StartActivity("server.pipeline.context_provider");
+                providerActivity?.SetTag("context.provider", provider.Name);
+                providerActivity?.SetTag("context.provider_order", provider.Order);
                 await provider.ContributeAsync(builder, ct);
+                providerActivity?.SetTag("context.phrase_hints", builder.PhraseHints.Count);
+                providerActivity?.SetTag("context.dialog_turns", builder.DialogTurns.Count);
             }
             catch (Exception ex)
             {
@@ -343,7 +379,11 @@ public class StreamingPipeline : IPipelineController, IDisposable
             {
                 _logger.LogDebug("[Pipeline] Running post-processing stage: {Name} (order={Order})",
                     stage.Name, stage.Order);
+                using var stageActivity = WhisperDeskTelemetry.StartActivity("server.pipeline.postprocess_stage");
+                stageActivity?.SetTag("postprocess.stage", stage.Name);
+                stageActivity?.SetTag("postprocess.stage_order", stage.Order);
                 current = await stage.ProcessAsync(current, context, ct);
+                stageActivity?.SetTag("postprocess.output_length", current.Length);
             }
             catch (Exception ex)
             {

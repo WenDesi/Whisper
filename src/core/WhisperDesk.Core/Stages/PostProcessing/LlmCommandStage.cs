@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Contract;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Llm.Contract;
+using WhisperDesk.Telemetry;
 
 namespace WhisperDesk.Core.Stages.PostProcessing;
 
@@ -50,8 +51,13 @@ public class LlmCommandStage : IPostProcessingStage
 
     public async Task<string> ProcessAsync(string text, PostProcessingContext context, CancellationToken ct = default)
     {
+        using var activity = WhisperDeskTelemetry.StartActivity("server.pipeline.llm_command");
+        activity?.SetTag("llm.provider", _llmProvider.Name);
+        activity?.SetTag("transcript.input_length", text.Length);
+
         if (string.IsNullOrWhiteSpace(text))
         {
+            activity?.SetTag("llm_command.skipped", true);
             _logger.LogInformation("[LlmCommand] Empty transcript; skipping LLM command.");
             return text;
         }
@@ -59,6 +65,8 @@ public class LlmCommandStage : IPostProcessingStage
         var toolContext = context.ToolContext;
         if (string.IsNullOrWhiteSpace(toolContext.MainWindowTitle))
         {
+            activity?.SetTag("llm_command.skipped", true);
+            activity?.SetTag("llm_command.skip_reason", "missing_window_title");
             _logger.LogWarning("[LlmCommand] No valid window title in context. Skipping LLM command.");
             return text;
         }
@@ -66,11 +74,13 @@ public class LlmCommandStage : IPostProcessingStage
         var systemPrompt = await SystemPromptTemplate.RenderAsync(new TemplateContext());
 
         var isDraftMode = !string.IsNullOrWhiteSpace(toolContext.DraftText);
+        activity?.SetTag("llm_command.draft_mode", isDraftMode);
         var userPrompt = isDraftMode
             ? string.Format(DraftUserPromptTemplate, toolContext.DraftText, text)
             : BuildNormalUserPrompt(toolContext.SelectedText, text);
 
         var toolNames = string.Join(", ", toolContext.Tools.Select(t => t.Name));
+        activity?.SetTag("llm_command.tool_count", toolContext.Tools.Count);
         _logger.LogDebug("[LlmCommand] Sending command to LLM. SystemPrompt={SystemPrompt}, UserPrompt={UserPrompt}, Tools={Tools}",
             systemPrompt, userPrompt, toolNames);
 
@@ -92,10 +102,12 @@ public class LlmCommandStage : IPostProcessingStage
 
         if (isDraftMode && string.IsNullOrWhiteSpace(result))
         {
+            activity?.SetTag("llm_command.empty_result", true);
             _logger.LogWarning("[LlmCommand] Draft correction returned empty text; keeping original draft.");
             return toolContext.DraftText;
         }
 
+        activity?.SetTag("transcript.output_length", result.Length);
         _logger.LogInformation("[LlmCommand] Done: {InLen} -> {OutLen} chars.", text.Length, result.Length);
         return result;
     }
