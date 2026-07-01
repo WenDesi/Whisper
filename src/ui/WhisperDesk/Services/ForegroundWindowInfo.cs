@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using WhisperDesk.Core.Contract;
+using WhisperDesk.Telemetry;
 
 namespace WhisperDesk.Services;
 
@@ -53,14 +54,34 @@ public static partial class ForegroundWindowInfo
     /// </summary>
     public static WindowTextContext? GetTextContext()
     {
+        using var activity = WhisperDeskTelemetry.StartActivity("ui.get_text_context");
         var hwnd = GetForegroundWindow();
         if (hwnd == IntPtr.Zero)
+        {
+            activity?.SetTag("foreground_window.present", false);
             return null;
-        GetWindowThreadProcessId(hwnd, out var pid);
-        var process = Process.GetProcessById((int)pid);
+        }
+        activity?.SetTag("foreground_window.present", true);
+        Process process;
+        using (WhisperDeskTelemetry.StartActivity("ui.get_text_context.process"))
+        {
+            GetWindowThreadProcessId(hwnd, out var pid);
+            process = Process.GetProcessById((int)pid);
+        }
 
-        var fileFullPath = ExtractFileFullPath(hwnd);
-        var selected = GetSelectedTextViaClipboard();
+        string fileFullPath;
+        using (WhisperDeskTelemetry.StartActivity("ui.get_text_context.file_path"))
+        {
+            fileFullPath = ExtractFileFullPath(hwnd);
+        }
+        string selected;
+        using (WhisperDeskTelemetry.StartActivity("ui.get_text_context.selected_text"))
+        {
+            selected = GetSelectedTextViaClipboard();
+        }
+
+        activity?.SetTag("selected.length", selected.Length);
+        activity?.SetTag("file_path.present", !string.IsNullOrEmpty(fileFullPath));
 
         return new WindowTextContext
         {

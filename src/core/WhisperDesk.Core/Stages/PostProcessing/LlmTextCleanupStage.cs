@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Contract;
 using WhisperDesk.Core.Pipeline;
 using WhisperDesk.Llm.Contract;
+using WhisperDesk.Telemetry;
 
 namespace WhisperDesk.Core.Stages.PostProcessing;
 
@@ -37,8 +38,13 @@ public class LlmTextCleanupStage : IPostProcessingStage
 
     public async Task<string> ProcessAsync(string text, PostProcessingContext context, CancellationToken ct = default)
     {
+        using var activity = WhisperDeskTelemetry.StartActivity("server.pipeline.llm_cleanup");
+        activity?.SetTag("llm.provider", _llmProvider.Name);
+        activity?.SetTag("transcript.input_length", text.Length);
+
         if (text.Length < MinCleanupLength)
         {
+            activity?.SetTag("llm_cleanup.skipped", true);
             _logger.LogInformation("[LlmCleanup] Skipping cleanup for short text ({Length} < {Min} chars).",
                 text.Length, MinCleanupLength);
             return text;
@@ -70,8 +76,10 @@ public class LlmTextCleanupStage : IPostProcessingStage
         }
 
         var result = sb.ToString();
-        _logger.LogInformation("[LlmCleanup] Cleanup done: {InLen} -> {OutLen} chars. FirstChunk={FirstMs}ms, TotalLlm={TotalMs}ms.",
-            text.Length, result.Length, firstChunkMs, sw.ElapsedMilliseconds);
+        activity?.SetTag("llm.first_chunk_ms", firstChunkMs);
+        activity?.SetTag("transcript.output_length", result.Length);
+        _logger.LogInformation("[LlmCleanup] Cleanup done: {InLen} -> {OutLen} chars.",
+            text.Length, result.Length);
         return result;
     }
 }
