@@ -444,14 +444,79 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private TimeSpan GetDraftCommitDelay(string text)
     {
-        const double minimumMs = 1500;
-        const double maximumMs = 6000;
-        const double lengthScale = 180;
+        var settings = _appSettings.DraftPreview;
+        var minimumMs = Math.Max(0, settings.MinimumDelayMs);
+        var maximumMs = Math.Max(minimumMs, settings.MaximumDelayMs);
+        var baseMs = Math.Max(0, settings.BaseDelayMs);
+        var unitsPerSecond = settings.ReadingUnitsPerSecond > 0 ? settings.ReadingUnitsPerSecond : 16.0;
+        var units = CountDraftReadingUnits(text, settings);
+        var delayMs = Math.Clamp(baseMs + units / unitsPerSecond * 1000, minimumMs, maximumMs);
 
-        var length = string.IsNullOrWhiteSpace(text) ? 0 : text.Trim().Length;
-        var growth = 1 - Math.Exp(-length / lengthScale);
+        _logger.LogInformation(
+            "[Draft] Reading estimate: chars={Length}, units={Units:F1}, unitsPerSecond={UnitsPerSecond:F1}, delay={DelayMs:F0}ms.",
+            string.IsNullOrWhiteSpace(text) ? 0 : text.Trim().Length,
+            units,
+            unitsPerSecond,
+            delayMs);
 
-        return TimeSpan.FromMilliseconds(minimumMs + (maximumMs - minimumMs) * growth);
+        return TimeSpan.FromMilliseconds(delayMs);
+    }
+
+    private static double CountDraftReadingUnits(string text, DraftPreviewSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 0;
+        }
+
+        var units = 0.0;
+        var index = 0;
+        var trimmed = text.Trim();
+        while (index < trimmed.Length)
+        {
+            var ch = trimmed[index];
+            if (char.IsWhiteSpace(ch))
+            {
+                index++;
+                continue;
+            }
+
+            if (IsAsciiLetter(ch))
+            {
+                index++;
+                while (index < trimmed.Length && (IsAsciiLetter(trimmed[index]) || trimmed[index] == '-' || trimmed[index] == '_'))
+                {
+                    index++;
+                }
+
+                units += Math.Max(0.1, settings.LatinWordUnits);
+                continue;
+            }
+
+            if (char.IsDigit(ch))
+            {
+                index++;
+                while (index < trimmed.Length && (char.IsDigit(trimmed[index]) || trimmed[index] == '.' || trimmed[index] == ','))
+                {
+                    index++;
+                }
+
+                units += Math.Max(0.1, settings.NumberUnits);
+                continue;
+            }
+
+            units += char.IsPunctuation(ch) || char.IsSymbol(ch)
+                ? Math.Max(0, settings.PunctuationUnits)
+                : 1.0;
+            index++;
+        }
+
+        return units;
+    }
+
+    private static bool IsAsciiLetter(char ch)
+    {
+        return ch is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
     }
 
     [RelayCommand]

@@ -8,6 +8,7 @@ public class WhisperDeskSettings
     public HotkeySettings Hotkeys { get; set; } = new();
     public AudioSettings Audio { get; set; } = new();
     public TranscriptionSettings Transcription { get; set; } = new();
+    public DraftPreviewSettings DraftPreview { get; set; } = new();
     public RecordingSettings Recording { get; set; } = new();
 }
 
@@ -65,6 +66,17 @@ public class RecordingSettings
     /// Directory path where recordings are saved. If empty, the save recording feature is disabled.
     /// </summary>
     public string SavePath { get; set; } = string.Empty;
+}
+
+public class DraftPreviewSettings
+{
+    public int MinimumDelayMs { get; set; } = 0;
+    public int MaximumDelayMs { get; set; } = 18000;
+    public int BaseDelayMs { get; set; } = 0;
+    public double ReadingUnitsPerSecond { get; set; } = 16.0;
+    public double LatinWordUnits { get; set; } = 2.0;
+    public double NumberUnits { get; set; } = 1.5;
+    public double PunctuationUnits { get; set; } = 0.25;
 }
 
 public class VolcengineSpeechSettings
