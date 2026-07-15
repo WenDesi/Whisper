@@ -49,11 +49,22 @@ internal class VolcengineRequestInfo
     [JsonPropertyName("enable_punc")]
     public bool EnablePunc { get; set; } = true;
 
+    [JsonPropertyName("enable_nonstream")]
+    public bool EnableNonstream { get; set; } = true;
+
     [JsonPropertyName("result_type")]
     public string ResultType { get; set; } = "single";
 
     [JsonPropertyName("show_utterances")]
     public bool ShowUtterances { get; set; } = true;
+
+    [JsonPropertyName("end_window_size")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? EndWindowSize { get; set; }
+
+    [JsonPropertyName("force_to_speech_time")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ForceToSpeechTime { get; set; }
 
     [JsonPropertyName("corpus")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
