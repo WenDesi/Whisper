@@ -12,8 +12,6 @@ namespace WhisperDesk.Stt.Provider.Volcengine;
 
 public class VolcengineSttProvider : IStreamingSttProvider
 {
-    private const string WebSocketEndpoint = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
-
     private const byte ProtocolVersion = 0x1;
     private const byte HeaderSizeUnits = 0x1;
     private const byte MessageTypeFullClientRequest = 0x1;
@@ -41,6 +39,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
     private ConcurrentQueue<string> _results = new();
     private string _lastPartialText = string.Empty;
     private TaskCompletionSource<bool>? _sessionCompleteTcs;
+    private bool _serverSignaledEnd;
     private int _sequence;
 
     public string Name => "Volcengine Doubao";
@@ -62,6 +61,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
         _results = new ConcurrentQueue<string>();
         _lastPartialText = string.Empty;
         _sessionCompleteTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _serverSignaledEnd = false;
         _sequence = 1;
         _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _audioChannel = Channel.CreateUnbounded<AudioChunk>(new UnboundedChannelOptions
@@ -79,8 +79,17 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
         try
         {
-            await _webSocket.ConnectAsync(new Uri(WebSocketEndpoint), _sessionCts.Token);
-            _logger.LogInformation("[Volcengine] WebSocket connected. ConnectId={ConnectId}", connectId);
+            await _webSocket.ConnectAsync(new Uri(_config.Endpoint), _sessionCts.Token);
+            _logger.LogInformation(
+                "[Volcengine] WebSocket connected. Mode={Mode}, ConnectId={ConnectId}, Endpoint={Endpoint}, EnableNonstream={EnableNonstream}, ResultType={ResultType}, ShowUtterances={ShowUtterances}, EndWindowSizeMs={EndWindowSizeMs}, ForceToSpeechTimeMs={ForceToSpeechTimeMs}",
+                _config.Mode,
+                connectId,
+                _config.Endpoint,
+                _config.EnableNonstream,
+                _config.ResultType,
+                _config.ShowUtterances,
+                _config.EndWindowSizeMs,
+                _config.ForceToSpeechTimeMs);
         }
         catch (Exception ex)
         {
@@ -118,14 +127,16 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
         if (_sessionCompleteTcs != null)
         {
-            var completedTask = await Task.WhenAny(_sessionCompleteTcs.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+            var finalizationTimeout = TimeSpan.FromMilliseconds(Math.Max(500, _config.FinalizationTimeoutMs));
+            var completedTask = await Task.WhenAny(_sessionCompleteTcs.Task, Task.Delay(finalizationTimeout));
             if (completedTask == _sessionCompleteTcs.Task)
             {
                 _logger.LogDebug("[Volcengine] Session completion signal received.");
             }
             else
             {
-                _logger.LogWarning("[Volcengine] Timed out waiting for session completion signal; ending with collected results.");
+                _logger.LogWarning("[Volcengine] Timed out after {TimeoutMs}ms waiting for session completion signal; ending with collected results.",
+                    (int)finalizationTimeout.TotalMilliseconds);
             }
         }
 
@@ -159,6 +170,10 @@ public class VolcengineSttProvider : IStreamingSttProvider
             {
                 fullText = _lastPartialText;
                 _logger.LogWarning("[Volcengine] No final segments received; using last partial transcript ({Length} chars).", fullText.Length);
+            }
+            else if (_serverSignaledEnd)
+            {
+                _logger.LogDebug("[Volcengine] Ignoring trailing partial after server end signal ({Length} chars).", _lastPartialText.Length);
             }
             else if (_lastPartialText.StartsWith(fullText, StringComparison.Ordinal))
             {
@@ -284,8 +299,11 @@ public class VolcengineSttProvider : IStreamingSttProvider
                 ModelName = "bigmodel",
                 EnableItn = true,
                 EnablePunc = true,
-                ResultType = "single",
-                ShowUtterances = true,
+                EnableNonstream = _config.EnableNonstream,
+                EndWindowSize = _config.EndWindowSizeMs,
+                ForceToSpeechTime = _config.ForceToSpeechTimeMs,
+                ResultType = _config.ResultType,
+                ShowUtterances = _config.ShowUtterances,
                 Corpus = BuildCorpus(options)
             }
         };
@@ -528,6 +546,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
             }
 
             var result = response.Result ?? response.PayloadMsg?.Result;
+            var isTerminalResponse = isLastPackage || response.IsLastPackage || (response.PayloadMsg?.IsEnd ?? false) || sequence < 0;
 
             if (result != null)
             {
@@ -538,7 +557,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
                 {
                     foreach (var utterance in result.Utterances)
                     {
-                        if (utterance.Definite)
+                        if (utterance.Definite || isTerminalResponse)
                         {
                             hasDefiniteUtterances = true;
                             var text = utterance.Text ?? string.Empty;
@@ -559,7 +578,14 @@ public class VolcengineSttProvider : IStreamingSttProvider
                     }
                 }
 
-                if (!hasDefiniteUtterances && !string.IsNullOrWhiteSpace(resultText))
+                if (!hasDefiniteUtterances && isTerminalResponse && !string.IsNullOrWhiteSpace(resultText))
+                {
+                    _results.Enqueue(resultText);
+                    _lastPartialText = string.Empty;
+                    _logger.LogInformation("[Volcengine] Final text: {Text}", resultText);
+                    FinalResultReceived?.Invoke(this, new SttFinalResult(resultText, TimeSpan.Zero, TimeSpan.Zero));
+                }
+                else if (!hasDefiniteUtterances && !string.IsNullOrWhiteSpace(resultText))
                 {
                     _lastPartialText = resultText;
                     _logger.LogDebug("[Volcengine] Partial: {Text}", resultText);
@@ -569,6 +595,7 @@ public class VolcengineSttProvider : IStreamingSttProvider
 
             if (isLastPackage || response.IsLastPackage || (response.PayloadMsg?.IsEnd ?? false))
             {
+                _serverSignaledEnd = true;
                 _logger.LogInformation("[Volcengine] Server signaled end of session.");
                 _sessionCompleteTcs?.TrySetResult(true);
             }
