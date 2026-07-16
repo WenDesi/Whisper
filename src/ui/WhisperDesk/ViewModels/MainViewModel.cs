@@ -28,6 +28,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly object _draftLock = new();
     private PendingDraft? _pendingDraft;
     private CancellationTokenSource? _draftCommitCts;
+    private CancellationTokenSource? _draftCorrectionHoldCts;
+    private bool _draftCorrectionSessionStarted;
+    private bool _stopRequestedForActiveSession;
     private SessionMode _activeSessionMode = SessionMode.Transcribe;
 
     [ObservableProperty]
@@ -134,6 +137,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             StatusText = appStatus.ToDisplayString();
             IsRecording = pipelineState == PipelineState.Listening;
             if (appStatus != AppStatus.Error) HasError = false;
+            if (pipelineState == PipelineState.Listening && _stopRequestedForActiveSession && !_isStopping)
+            {
+                _stopRequestedForActiveSession = false;
+                StopActiveSession();
+            }
+            else if (pipelineState is PipelineState.Idle or PipelineState.Completed or PipelineState.Error)
+            {
+                _stopRequestedForActiveSession = false;
+            }
         });
     }
 
@@ -187,10 +199,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
             {
-                var effectiveMode = pressMode == SessionMode.Transcribe && HasPendingDraft()
-                    ? SessionMode.Instruct
-                    : pressMode;
-                BeginSession(effectiveMode);
+                if (pressMode == SessionMode.Transcribe && HasPendingDraft())
+                {
+                    BeginPendingDraftHotkeyIntent();
+                    return;
+                }
+
+                BeginSession(pressMode);
             }
         });
     }
@@ -202,30 +217,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
-            if (Status == AppStatus.Listening && !_isStopping)
+            if (TryCompletePendingDraftHotkeyIntent(out var correctionSessionStarted))
             {
-                _isStopping = true;
-                _ = Task.Run(async () =>
+                if (!correctionSessionStarted)
                 {
-                    PipelineResult? result = null;
-                    var sessionMode = _activeSessionMode;
-                    try
-                    {
-                        result = await _pipeline.StopSessionAsync(sessionMode, _cts?.Token ?? CancellationToken.None);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[ViewModel] Failed to stop session.");
-                    }
-                    finally
-                    {
-                        if (sessionMode == SessionMode.Instruct && result is null)
-                        {
-                            ReschedulePendingDraftCommitIfNeeded();
-                        }
-                        Application.Current?.Dispatcher.InvokeAsync(() => _isStopping = false);
-                    }
-                });
+                    _logger.LogInformation("[Draft] Accepted pending draft via short transcribe hotkey press.");
+                    CommitPendingDraftNow();
+                    return;
+                }
+
+                RequestStopActiveSession();
+                return;
+            }
+
+            if (Status == AppStatus.Listening)
+            {
+                RequestStopActiveSession();
             }
         });
     }
@@ -235,19 +242,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (IsRecording)
         {
-            if (_isStopping) return;
-            _isStopping = true;
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await _pipeline.StopSessionAsync(_activeSessionMode, _cts?.Token ?? CancellationToken.None);
-                }
-                finally
-                {
-                    Application.Current?.Dispatcher.InvokeAsync(() => _isStopping = false);
-                }
-            });
+            RequestStopActiveSession();
         }
         else
         {
@@ -275,6 +270,107 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _cts = new CancellationTokenSource();
         _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, mode, _cts.Token));
+    }
+
+    private void BeginPendingDraftHotkeyIntent()
+    {
+        CancelDraftCorrectionHoldCore();
+
+        var cts = new CancellationTokenSource();
+        _draftCorrectionHoldCts = cts;
+        _draftCorrectionSessionStarted = false;
+        _stopRequestedForActiveSession = false;
+
+        _logger.LogDebug("[Draft] Waiting for transcribe hotkey hold before starting correction.");
+        _ = BeginDraftCorrectionAfterHoldAsync(cts, GetDraftCorrectionHoldDelay());
+    }
+
+    private async Task BeginDraftCorrectionAfterHoldAsync(CancellationTokenSource cts, TimeSpan holdDelay)
+    {
+        try
+        {
+            await Task.Delay(holdDelay, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            if (!ReferenceEquals(_draftCorrectionHoldCts, cts) || !HasPendingDraft())
+            {
+                return;
+            }
+
+            _draftCorrectionSessionStarted = true;
+            _logger.LogInformation("[Draft] Starting pending draft correction after hotkey hold.");
+            BeginSession(SessionMode.Instruct);
+        });
+    }
+
+    private bool TryCompletePendingDraftHotkeyIntent(out bool correctionSessionStarted)
+    {
+        var cts = _draftCorrectionHoldCts;
+        if (cts is null)
+        {
+            correctionSessionStarted = false;
+            return false;
+        }
+
+        correctionSessionStarted = _draftCorrectionSessionStarted;
+        _draftCorrectionHoldCts = null;
+        _draftCorrectionSessionStarted = false;
+        cts.Cancel();
+        cts.Dispose();
+        return true;
+    }
+
+    private void RequestStopActiveSession()
+    {
+        if (_isStopping)
+        {
+            return;
+        }
+
+        if (Status != AppStatus.Listening && _pipeline.State != PipelineState.Listening)
+        {
+            _stopRequestedForActiveSession = true;
+            return;
+        }
+
+        StopActiveSession();
+    }
+
+    private void StopActiveSession()
+    {
+        if (_isStopping)
+        {
+            return;
+        }
+
+        _isStopping = true;
+        _ = Task.Run(async () =>
+        {
+            PipelineResult? result = null;
+            var sessionMode = _activeSessionMode;
+            try
+            {
+                result = await _pipeline.StopSessionAsync(sessionMode, _cts?.Token ?? CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ViewModel] Failed to stop session.");
+            }
+            finally
+            {
+                if (sessionMode == SessionMode.Instruct && result is null)
+                {
+                    ReschedulePendingDraftCommitIfNeeded();
+                }
+                Application.Current?.Dispatcher.InvokeAsync(() => _isStopping = false);
+            }
+        });
     }
 
     private void QueueTranscriptionDraft(string text)
@@ -519,6 +615,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return ch is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
     }
 
+    private TimeSpan GetDraftCorrectionHoldDelay()
+    {
+        var holdMs = Math.Clamp(_appSettings.Hotkeys.DraftCorrectionHoldMs, 100, 2000);
+        return TimeSpan.FromMilliseconds(holdMs);
+    }
+
     [RelayCommand]
     private void CopyToClipboard()
     {
@@ -638,7 +740,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
+        CancelDraftCorrectionHoldCore();
         CommitPendingDraftNow();
         GC.SuppressFinalize(this);
+    }
+
+    private void CancelDraftCorrectionHoldCore()
+    {
+        var cts = _draftCorrectionHoldCts;
+        _draftCorrectionHoldCts = null;
+        _draftCorrectionSessionStarted = false;
+        cts?.Cancel();
+        cts?.Dispose();
     }
 }
