@@ -31,6 +31,7 @@ public class HotkeySettings
 {
     public string Transcribe { get; set; } = "RightAlt";
     public string Instruct { get; set; } = "RightAlt+Shift";
+    public int DraftCorrectionHoldMs { get; set; } = 300;
 }
 
 public class AudioSettings

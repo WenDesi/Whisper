@@ -79,11 +79,6 @@ public partial class App : Application
                 Dispatcher.InvokeAsync(() =>
                 {
                     var appStatus = MapToAppStatus(pipelineState);
-                    if (_trayIcon != null)
-                    {
-                        _trayIcon.ToolTipText = appStatus.ToTrayTooltip();
-                    }
-
                     _floatingDock?.ApplyStatus(appStatus);
 
                     if (appStatus == AppStatus.Idle)
@@ -181,7 +176,6 @@ public partial class App : Application
     {
         _trayIcon = new TaskbarIcon
         {
-            ToolTipText = "WhisperDesk - Ready",
             Visibility = Visibility.Visible
         };
 
