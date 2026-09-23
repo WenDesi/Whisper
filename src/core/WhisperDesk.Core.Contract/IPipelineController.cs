@@ -19,6 +19,9 @@ public interface IPipelineController : IDisposable
     /// <summary>Current pipeline state.</summary>
     PipelineState State { get; }
 
+    /// <summary>Latest normalized microphone RMS level (0..1); zero when not recording.</summary>
+    float AudioLevel { get; }
+
     /// <summary>Most recent cleaned text (for paste hotkey).</summary>
     string? LastProcessedText { get; }
 

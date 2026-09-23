@@ -48,27 +48,44 @@ public static partial class ForegroundWindowInfo
     }
 
     /// <summary>
-    /// Returns selected text, all text, detected file path, and editor type for the
-    /// currently focused control in the foreground window.
+    /// Capture the target window immediately. Selection and file context are only
+    /// needed for instructions and must not block the WPF dispatcher.
     /// </summary>
-    public static WindowTextContext? GetTextContext()
+    public static Task<WindowTextContext?> GetTextContextAsync(SessionMode mode, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        var started = Stopwatch.GetTimestamp();
         var hwnd = GetForegroundWindow();
         if (hwnd == IntPtr.Zero)
-            return null;
-        GetWindowThreadProcessId(hwnd, out var pid);
-        var process = Process.GetProcessById((int)pid);
+            return Task.FromResult<WindowTextContext?>(null);
 
-        var fileFullPath = ExtractFileFullPath(hwnd);
-        var selected = GetSelectedTextViaClipboard();
-
-        return new WindowTextContext
+        return StaTask.RunAsync<WindowTextContext?>(() =>
         {
-            Selected = selected,
-            FileFullPath = fileFullPath,
-            WindowHandle = hwnd,
-            MainWindowTitle = process.MainWindowTitle
-        };
+            GetWindowThreadProcessId(hwnd, out var pid);
+            using var process = Process.GetProcessById((int)pid);
+            var context = new WindowTextContext
+            {
+                WindowHandle = hwnd,
+                MainWindowTitle = process.MainWindowTitle
+            };
+            _logger.LogDebug("[Context] Window snapshot took {ElapsedMs:F1}ms (mode={Mode}).",
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds, mode);
+            if (mode == SessionMode.Transcribe)
+                return context;
+
+            if (GetForegroundWindow() != hwnd)
+                throw new InvalidOperationException("目标窗口已切换，请重新按下语音指令快捷键。");
+
+            var fileFullPath = ExtractFileFullPath(hwnd);
+            ct.ThrowIfCancellationRequested();
+            if (GetForegroundWindow() != hwnd)
+                throw new InvalidOperationException("目标窗口已切换，请重新按下语音指令快捷键。");
+
+            var selected = GetSelectedTextViaClipboard();
+            _logger.LogDebug("[Context] Instruction context took {ElapsedMs:F1}ms.",
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            return context with { Selected = selected, FileFullPath = fileFullPath };
+        }, ct);
     }
 
     public const string ErrorWindowGone = "ERROR:WINDOW_GONE";

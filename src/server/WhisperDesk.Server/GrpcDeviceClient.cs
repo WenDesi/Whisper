@@ -4,21 +4,11 @@ using WhisperDesk.Proto;
 namespace WhisperDesk.Server;
 
 /// <summary>
-/// Information about a capture device, returned by GrpcDeviceClient.
-/// </summary>
-public class CaptureDeviceInfo
-{
-    public string Id { get; init; } = "";
-    public string Name { get; init; } = "";
-    public bool IsDefault { get; init; }
-}
-
-/// <summary>
 /// gRPC client for device operations (microphone enumeration, volume metering, etc.).
 /// </summary>
 public class GrpcDeviceClient : IDisposable
 {
-    private readonly GrpcChannel _channel;
+    private readonly GrpcChannel? _channel;
     private readonly DeviceService.DeviceServiceClient _client;
 
     public GrpcDeviceClient(string address)
@@ -27,9 +17,15 @@ public class GrpcDeviceClient : IDisposable
         _client = new DeviceService.DeviceServiceClient(_channel);
     }
 
-    public List<CaptureDeviceInfo> GetCaptureDevices()
+    public GrpcDeviceClient(DeviceService.DeviceServiceClient client)
     {
-        var response = _client.ListCaptureDevices(new ListCaptureDevicesRequest());
+        _client = client;
+    }
+
+    public async Task<List<CaptureDeviceInfo>> GetCaptureDevicesAsync(CancellationToken ct = default)
+    {
+        using var call = _client.ListCaptureDevicesAsync(new ListCaptureDevicesRequest(), cancellationToken: ct);
+        var response = await call.ResponseAsync.ConfigureAwait(false);
         return response.Devices.Select(d => new CaptureDeviceInfo
         {
             Id = d.Id,
@@ -38,30 +34,34 @@ public class GrpcDeviceClient : IDisposable
         }).ToList();
     }
 
-    public float GetPeakVolume(string deviceId)
+    public async Task<float> GetPeakVolumeAsync(string deviceId, CancellationToken ct = default)
     {
-        var response = _client.GetPeakVolume(new GetPeakVolumeRequest { DeviceId = deviceId });
+        using var call = _client.GetPeakVolumeAsync(new GetPeakVolumeRequest { DeviceId = deviceId }, cancellationToken: ct);
+        var response = await call.ResponseAsync.ConfigureAwait(false);
         return response.Peak;
     }
 
-    public void StartMonitoring()
+    public async Task StartMonitoringAsync(CancellationToken ct = default)
     {
-        _client.StartMonitoring(new StartMonitoringRequest());
+        using var call = _client.StartMonitoringAsync(new StartMonitoringRequest(), cancellationToken: ct);
+        await call.ResponseAsync.ConfigureAwait(false);
     }
 
-    public void StopMonitoring()
+    public async Task StopMonitoringAsync(CancellationToken ct = default)
     {
-        _client.StopMonitoring(new StopMonitoringRequest());
+        using var call = _client.StopMonitoringAsync(new StopMonitoringRequest(), cancellationToken: ct);
+        await call.ResponseAsync.ConfigureAwait(false);
     }
 
-    public void SetActiveDevice(string deviceId)
+    public async Task SetActiveDeviceAsync(string deviceId, CancellationToken ct = default)
     {
-        _client.SetActiveDevice(new SetActiveDeviceRequest { DeviceId = deviceId });
+        using var call = _client.SetActiveDeviceAsync(new SetActiveDeviceRequest { DeviceId = deviceId }, cancellationToken: ct);
+        await call.ResponseAsync.ConfigureAwait(false);
     }
 
     public void Dispose()
     {
-        _channel.Dispose();
+        _channel?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

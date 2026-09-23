@@ -30,7 +30,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
     private readonly IReadOnlyDictionary<string, ILocalTool> _localTools;
     private readonly ILlmProvider _llmProvider;
 
-    private PipelineState _state = PipelineState.Idle;
+    private volatile PipelineState _state = PipelineState.Idle;
     private SessionContextBuilder? _contextBuilder;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
     private string _foregroundWindowTitle = "";
@@ -53,6 +53,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
 
     public string? LastProcessedText { get; private set; }
     public bool HasRecordingData => _audioRouter.HasRecordingData;
+    public float AudioLevel => State == PipelineState.Listening ? _audioRouter.AudioLevel : 0;
 
     public event EventHandler<PipelineState>? StateChanged;
     public event EventHandler<string>? PartialTranscriptUpdated;

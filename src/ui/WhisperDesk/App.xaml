@@ -6,10 +6,11 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <materialDesign:BundledTheme BaseTheme="Dark"
-                                             PrimaryColor="DeepPurple"
-                                             SecondaryColor="Teal" />
+                <materialDesign:CustomColorTheme BaseTheme="Light"
+                                                PrimaryColor="#405B70"
+                                                SecondaryColor="#405B70" />
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign2.Defaults.xaml" />
+                <ResourceDictionary Source="Themes/LightTheme.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

@@ -1,4 +1,7 @@
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Unicode;
 using Fluid;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Contract;
@@ -21,6 +24,12 @@ public class LlmTextCleanupStage : IPostProcessingStage
 
     private static readonly IFluidTemplate SystemPromptTemplate =
         PromptTemplateLoader.Load(typeof(LlmTextCleanupStage).Assembly, "Cleanup.liquid");
+    private static readonly IFluidTemplate InputTemplate =
+        PromptTemplateLoader.Load(typeof(LlmTextCleanupStage).Assembly, "CleanupInput.liquid");
+    private static readonly JsonSerializerOptions TranscriptJsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+    };
 
     private readonly ILogger<LlmTextCleanupStage> _logger;
     private readonly ILlmProvider _llmProvider;
@@ -47,6 +56,9 @@ public class LlmTextCleanupStage : IPostProcessingStage
         _logger.LogInformation("[LlmCleanup] Cleaning {Length} chars via {Provider}.", text.Length, _llmProvider.Name);
 
         var systemPrompt = await SystemPromptTemplate.RenderAsync(new TemplateContext());
+        var inputContext = new TemplateContext();
+        inputContext.SetValue("transcript_json", JsonSerializer.Serialize(text, TranscriptJsonOptions));
+        var input = await InputTemplate.RenderAsync(inputContext);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         long firstChunkMs = -1;
@@ -55,8 +67,8 @@ public class LlmTextCleanupStage : IPostProcessingStage
         {
             await foreach (var part in _llmProvider.ProcessTextStreamingAsync(
                 systemPrompt,
-                text,
-                new LlmRequestOptions { Temperature = 0.3f },
+                input,
+                new LlmRequestOptions { Temperature = 0 },
                 ct))
             {
                 if (firstChunkMs < 0) firstChunkMs = sw.ElapsedMilliseconds;

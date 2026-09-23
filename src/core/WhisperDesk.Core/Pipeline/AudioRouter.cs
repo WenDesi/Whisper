@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 using WhisperDesk.Stt.Contract;
@@ -21,6 +22,14 @@ public class AudioRouter : IDisposable
     // Pre-connection buffer (audio captured before sink is ready)
     private readonly ConcurrentQueue<byte[]> _preBuffer = new();
     private volatile bool _sinkReady;
+    private volatile bool _capturing;
+    private float _audioLevel;
+    private long _lastAudioTimestamp;
+
+    public float AudioLevel =>
+        _capturing && Stopwatch.GetElapsedTime(Volatile.Read(ref _lastAudioTimestamp)) < TimeSpan.FromMilliseconds(250)
+            ? Volatile.Read(ref _audioLevel)
+            : 0;
 
     // Recording buffer for WAV export
     private MemoryStream? _recordingBuffer;
@@ -42,7 +51,10 @@ public class AudioRouter : IDisposable
     /// <param name="deviceNumber">WaveIn device number (0 = system default).</param>
     public void Start(AudioFormat format, int deviceNumber = 0)
     {
+        _ = PcmAudioLevel.CalculateRms(ReadOnlySpan<byte>.Empty, format.BitsPerSample);
         _sinkReady = false;
+        Volatile.Write(ref _audioLevel, 0);
+        Volatile.Write(ref _lastAudioTimestamp, 0);
         _currentFormat = format;
 
         lock (_recordingLock)
@@ -59,6 +71,7 @@ public class AudioRouter : IDisposable
         };
 
         _waveIn.DataAvailable += OnDataAvailable;
+        _capturing = true;
         _waveIn.StartRecording();
 
         _logger.LogInformation("[AudioRouter] Mic capture started ({SampleRate}Hz, {Bits}bit, {Ch}ch). Buffering until sink ready.",
@@ -79,6 +92,8 @@ public class AudioRouter : IDisposable
     /// <summary>Stop microphone capture.</summary>
     public void Stop()
     {
+        _capturing = false;
+        Volatile.Write(ref _audioLevel, 0);
         if (_waveIn != null)
         {
             _waveIn.StopRecording();
@@ -155,7 +170,12 @@ public class AudioRouter : IDisposable
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
-        if (e.BytesRecorded == 0) return;
+        if (!_capturing || !ReferenceEquals(sender, _waveIn) || e.BytesRecorded == 0) return;
+
+        // WaveInEvent invokes this on its capture worker, never on the WPF dispatcher.
+        Volatile.Write(ref _audioLevel,
+            PcmAudioLevel.CalculateRms(e.Buffer.AsSpan(0, e.BytesRecorded), _currentFormat.BitsPerSample));
+        Volatile.Write(ref _lastAudioTimestamp, Stopwatch.GetTimestamp());
 
         var chunk = new byte[e.BytesRecorded];
         Buffer.BlockCopy(e.Buffer, 0, chunk, 0, e.BytesRecorded);

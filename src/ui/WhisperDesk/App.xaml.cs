@@ -72,6 +72,7 @@ public partial class App : Application
             _floatingDock.RecordReleased += (_, _) => mainVm.EndPushToTalk();
             mainVm.DraftPreviewChanged += (_, preview) => Dispatcher.InvokeAsync(() => _overlayWindow?.ShowDraftPreview(preview.Text, preview.CommitDelay));
             mainVm.DraftPreviewClosed += (_, _) => Dispatcher.InvokeAsync(() => _overlayWindow?.HideOverlay());
+            mainVm.AudioLevelUpdated += (_, level) => _overlayWindow?.UpdateAudioLevel(level);
 
             var pipeline = _serviceProvider.GetRequiredService<IPipelineController>();
             pipeline.StateChanged += (_, pipelineState) =>

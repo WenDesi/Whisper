@@ -1,18 +1,31 @@
+using System.Diagnostics;
+using Grpc.Core;
 using Grpc.Net.Client;
 using WhisperDesk.Core.Contract;
 using WhisperDesk.Proto;
 
 namespace WhisperDesk.Server;
 
-public class GrpcPipelineClient : IPipelineController, IDisposable
+public class GrpcPipelineClient : IPipelineController, IAsyncDisposable
 {
     private readonly GrpcChannel _channel;
     private readonly PipelineService.PipelineServiceClient _client;
     private CancellationTokenSource? _subscribeCts;
     private Task? _subscribeTask;
+    private Task? _audioLevelTask;
+    private Task? _disposeTask;
+    private readonly object _disposeLock = new();
     private int _disposed;
+    private float _audioLevel;
+    private long _audioLevelTimestamp;
+    private volatile PipelineState _state = PipelineState.Idle;
 
-    public PipelineState State { get; private set; } = PipelineState.Idle;
+    public PipelineState State => _state;
+    public float AudioLevel =>
+        State == PipelineState.Listening &&
+        Stopwatch.GetElapsedTime(Volatile.Read(ref _audioLevelTimestamp)) < TimeSpan.FromMilliseconds(300)
+            ? Volatile.Read(ref _audioLevel)
+            : 0;
     public string? LastProcessedText { get; private set; }
     public bool HasRecordingData { get; private set; }
 
@@ -88,25 +101,61 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
     {
         var subscribeCts = new CancellationTokenSource();
         _subscribeCts = subscribeCts;
-        Task.Run(async () =>
+        var ct = subscribeCts.Token;
+        _subscribeTask = Task.Run(() => ReadSubscriptionAsync(
+            token => _client.Subscribe(new SubscribeRequest(), cancellationToken: token),
+            ProcessEvent, "PipelineConnection", ct));
+        _audioLevelTask = Task.Run(() => ReadSubscriptionAsync(
+            token => _client.SubscribeAudioLevel(new SubscribeRequest(), cancellationToken: token),
+            level =>
+            {
+                Volatile.Write(ref _audioLevel, level.Level);
+                Volatile.Write(ref _audioLevelTimestamp, Stopwatch.GetTimestamp());
+            }, "AudioLevelConnection", ct));
+    }
+
+    private async Task ReadSubscriptionAsync<T>(
+        Func<CancellationToken, AsyncServerStreamingCall<T>> subscribe,
+        Action<T> consume, string stage, CancellationToken ct)
+    {
+        var reportedFailure = false;
+        try
         {
-            while (!subscribeCts.Token.IsCancellationRequested)
+            while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    using var stream = _client.Subscribe(new SubscribeRequest(), cancellationToken: subscribeCts.Token);
-                    while (await stream.ResponseStream.MoveNext(subscribeCts.Token))
+                    using var stream = subscribe(ct);
+                    while (await stream.ResponseStream.MoveNext(ct).ConfigureAwait(false))
                     {
-                        ProcessEvent(stream.ResponseStream.Current);
+                        if (ct.IsCancellationRequested) break;
+                        consume(stream.ResponseStream.Current);
+                        reportedFailure = false;
                     }
+                    if (!ct.IsCancellationRequested)
+                        throw new IOException("The pipeline event stream closed unexpectedly.");
                 }
-                catch (OperationCanceledException) { break; }
-                catch
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+                catch (Exception ex)
                 {
-                    await Task.Delay(1000, subscribeCts.Token);
+                    if (ct.IsCancellationRequested) break;
+                    if (!reportedFailure && Volatile.Read(ref _disposed) == 0)
+                    {
+                        reportedFailure = true;
+                        ErrorOccurred?.Invoke(this, new PipelineError
+                        {
+                            Stage = stage,
+                            Message = $"本地服务连接中断，正在重连：{ex.Message}",
+                            Exception = ex
+                        });
+                    }
+                    await Task.Delay(1000, ct).ConfigureAwait(false);
                 }
             }
-        }, subscribeCts.Token);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
     }
 
     private void ProcessEvent(PipelineEvent evt)
@@ -114,7 +163,7 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
         switch (evt.EventCase)
         {
             case PipelineEvent.EventOneofCase.StateChanged:
-                State = MapState(evt.StateChanged.State);
+                _state = MapState(evt.StateChanged.State);
                 StateChanged?.Invoke(this, State);
                 break;
             case PipelineEvent.EventOneofCase.PartialTranscript:
@@ -201,37 +250,42 @@ public class GrpcPipelineClient : IPipelineController, IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        _ = BeginDispose();
+        GC.SuppressFinalize(this);
+    }
+
+    public ValueTask DisposeAsync() => new(BeginDispose());
+
+    private Task BeginDispose()
+    {
+        lock (_disposeLock)
         {
-            return;
+            if (_disposeTask is not null)
+                return _disposeTask;
+
+            Volatile.Write(ref _disposed, 1);
+            var cts = _subscribeCts;
+            cts?.Cancel();
+            _channel.Dispose();
+            Volatile.Write(ref _audioLevel, 0);
+            _disposeTask = FinishSubscriptionsAsync(cts);
+            _ = _disposeTask.ContinueWith(
+                task => Trace.TraceError("Pipeline subscription cleanup failed: {0}", task.Exception),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+            return _disposeTask;
         }
+    }
 
-        var subscribeCts = Interlocked.Exchange(ref _subscribeCts, null);
-        var subscribeTask = Interlocked.Exchange(ref _subscribeTask, null);
-
+    private async Task FinishSubscriptionsAsync(CancellationTokenSource? cts)
+    {
         try
         {
-            subscribeCts?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-
-        try
-        {
-            subscribeTask?.Wait(TimeSpan.FromSeconds(2));
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (AggregateException ex) when (ex.InnerExceptions.All(static inner => inner is OperationCanceledException))
-        {
+            await Task.WhenAll(_subscribeTask ?? Task.CompletedTask, _audioLevelTask ?? Task.CompletedTask)
+                .ConfigureAwait(false);
         }
         finally
         {
-            subscribeCts?.Dispose();
-            _channel.Dispose();
-            GC.SuppressFinalize(this);
+            cts?.Dispose();
         }
     }
 }

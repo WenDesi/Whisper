@@ -2,6 +2,8 @@ using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using MaterialDesignThemes.Wpf;
+using WhisperDesk.Themes;
 using WhisperDesk.ViewModels;
 
 namespace WhisperDesk.Views;
@@ -37,6 +39,9 @@ public partial class MainWindow : Window
         var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
         source?.AddHook(WndProc);
     }
+
+    private void DialogHost_Loaded(object sender, RoutedEventArgs e) =>
+        DialogTransitions.UseUniformTiming((DialogHost)sender);
 
     private const int WM_SYSCOMMAND = 0x0112;
     private const int SC_KEYMENU = 0xF100;

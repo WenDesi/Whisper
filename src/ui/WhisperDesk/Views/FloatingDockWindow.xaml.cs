@@ -141,11 +141,12 @@ public partial class FloatingDockWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             StopAnimations();
+            DockButton.ToolTip = $"{status.ToDisplayString()}\n按住录音 · 单击查看结果 · 双击打开主窗口";
 
             switch (status)
             {
                 case AppStatus.Listening:
-                    SetRingColor("#FF5252");
+                    SetRingColor("WhisperDesk.Color.Danger");
                     MicIcon.Visibility = Visibility.Visible;
                     SpinnerPanel.Visibility = Visibility.Collapsed;
                     var pulse = (Storyboard)FindResource("PulseAnimation");
@@ -154,7 +155,7 @@ public partial class FloatingDockWindow : Window
 
                 case AppStatus.Transcribing:
                 case AppStatus.Cleaning:
-                    SetRingColor("#448AFF");
+                    SetRingColor("WhisperDesk.Color.Accent");
                     MicIcon.Visibility = Visibility.Collapsed;
                     SpinnerPanel.Visibility = Visibility.Visible;
                     var spinner = (Storyboard)FindResource("SpinnerAnimation");
@@ -162,19 +163,19 @@ public partial class FloatingDockWindow : Window
                     break;
 
                 case AppStatus.Ready:
-                    SetRingColor("#69F0AE");
+                    SetRingColor("WhisperDesk.Color.Success");
                     MicIcon.Visibility = Visibility.Visible;
                     SpinnerPanel.Visibility = Visibility.Collapsed;
                     break;
 
                 case AppStatus.Error:
-                    SetRingColor("#FF5252");
+                    SetRingColor("WhisperDesk.Color.Danger");
                     MicIcon.Visibility = Visibility.Visible;
                     SpinnerPanel.Visibility = Visibility.Collapsed;
                     break;
 
                 default:
-                    SetRingColor("#7C4DFF");
+                    SetRingColor("WhisperDesk.Color.Border");
                     MicIcon.Visibility = Visibility.Visible;
                     SpinnerPanel.Visibility = Visibility.Collapsed;
                     break;
@@ -294,10 +295,9 @@ public partial class FloatingDockWindow : Window
         // and dismisses on outside click. Nothing to do here.
     }
 
-    private void SetRingColor(string hex)
+    private void SetRingColor(string resourceKey)
     {
-        var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
-        RingBrush.Color = color;
+        RingBrush.Color = (System.Windows.Media.Color)FindResource(resourceKey);
     }
 
     private void StopAnimations()

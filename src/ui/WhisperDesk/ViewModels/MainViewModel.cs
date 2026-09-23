@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MaterialDesignThemes.Wpf;
@@ -22,6 +23,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly GrpcDeviceClient _deviceClient;
     private readonly WhisperDeskSettings _appSettings;
     private readonly TextInjectionService _textInjection;
+    private readonly DispatcherTimer _audioLevelTimer;
     private CancellationTokenSource? _cts;
     private bool _isStopping;
     private WindowTextContext? _sessionTextContext;
@@ -40,9 +42,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string _statusText = AppStatus.Idle.ToDisplayString();
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRawText))]
     private string _rawText = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCleanedText))]
     private string _cleanedText = string.Empty;
 
     [ObservableProperty]
@@ -55,15 +59,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _isRecording;
 
     [ObservableProperty]
+    private bool _isStarting;
+
+    [ObservableProperty]
     private string _lastError = string.Empty;
 
     [ObservableProperty]
     private bool _hasError;
 
-    public string PushToTalkHint => $"\U0001f3a4 Hold {_appSettings.Hotkeys.Transcribe} to dictate, {_appSettings.Hotkeys.Instruct} to instruct";
+    public bool HasRawText => !string.IsNullOrWhiteSpace(RawText);
+    public bool HasCleanedText => !string.IsNullOrWhiteSpace(CleanedText);
+    public string PushToTalkHint => $"按住 {_appSettings.Hotkeys.Transcribe} 说话";
+    public string InstructHint => $"{_appSettings.Hotkeys.Instruct}：语音指令";
 
     public event EventHandler<DraftPreview>? DraftPreviewChanged;
     public event EventHandler? DraftPreviewClosed;
+    public event EventHandler<float>? AudioLevelUpdated;
 
     public sealed record DraftPreview(string Text, TimeSpan CommitDelay);
 
@@ -83,6 +94,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _deviceClient = deviceClient;
         _appSettings = appSettings;
         _textInjection = textInjection;
+        _audioLevelTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(50)
+        };
+        _audioLevelTimer.Tick += OnAudioLevelTick;
 
         // Wire pipeline events
         _pipeline.StateChanged += OnPipelineStateChanged;
@@ -136,17 +152,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Status = appStatus;
             StatusText = appStatus.ToDisplayString();
             IsRecording = pipelineState == PipelineState.Listening;
+            if (IsRecording)
+            {
+                _audioLevelTimer.Start();
+            }
+            else
+            {
+                _audioLevelTimer.Stop();
+                AudioLevel = 0;
+                AudioLevelUpdated?.Invoke(this, 0);
+            }
             if (appStatus != AppStatus.Error) HasError = false;
-            if (pipelineState == PipelineState.Listening && _stopRequestedForActiveSession && !_isStopping)
+            if (pipelineState == PipelineState.Listening && _stopRequestedForActiveSession && !IsStarting && !_isStopping)
             {
                 _stopRequestedForActiveSession = false;
                 StopActiveSession();
             }
-            else if (pipelineState is PipelineState.Idle or PipelineState.Completed or PipelineState.Error)
+            else if (!IsStarting && pipelineState is (PipelineState.Idle or PipelineState.Completed or PipelineState.Error))
             {
                 _stopRequestedForActiveSession = false;
             }
         });
+    }
+
+    private void OnAudioLevelTick(object? sender, EventArgs e)
+    {
+        AudioLevel = _pipeline.AudioLevel;
+        AudioLevelUpdated?.Invoke(this, AudioLevel);
     }
 
     private void OnSessionCompleted(object? sender, PipelineResult result)
@@ -197,7 +229,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
-            if (Status == AppStatus.Idle || Status == AppStatus.Ready || Status == AppStatus.Error)
+            if (!IsStarting && Status is (AppStatus.Idle or AppStatus.Ready or AppStatus.Error))
             {
                 if (pressMode == SessionMode.Transcribe && HasPendingDraft())
                 {
@@ -230,7 +262,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            if (Status == AppStatus.Listening)
+            if (Status == AppStatus.Listening || IsStarting)
             {
                 RequestStopActiveSession();
             }
@@ -240,7 +272,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ToggleRecording()
     {
-        if (IsRecording)
+        if (IsRecording || IsStarting)
         {
             RequestStopActiveSession();
         }
@@ -252,24 +284,58 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void BeginSession(SessionMode mode)
     {
+        if (IsStarting || _isStopping || Status is not (AppStatus.Idle or AppStatus.Ready or AppStatus.Error))
+            return;
+
         PartialText = string.Empty;
         _activeSessionMode = mode;
-
-        if (mode == SessionMode.Instruct && TryBeginDraftCorrection(out var draftContext))
-        {
-            _sessionTextContext = draftContext;
-        }
-        else
-        {
-            if (mode == SessionMode.Transcribe)
-            {
-                CommitPendingDraftNow();
-            }
-            _sessionTextContext = ForegroundWindowInfo.GetTextContext();
-        }
-
+        _stopRequestedForActiveSession = false;
+        IsStarting = true;
+        StatusText = "正在准备录音";
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
-        _ = Task.Run(() => _pipeline.StartSessionAsync(_sessionTextContext, mode, _cts.Token));
+        _ = StartSessionCoreAsync(mode, _cts.Token);
+    }
+
+    private async Task StartSessionCoreAsync(SessionMode mode, CancellationToken ct)
+    {
+        try
+        {
+            if (mode == SessionMode.Instruct && TryBeginDraftCorrection(out var draftContext))
+            {
+                _sessionTextContext = draftContext;
+            }
+            else
+            {
+                if (mode == SessionMode.Transcribe)
+                    CommitPendingDraftNow();
+                _sessionTextContext = await ForegroundWindowInfo.GetTextContextAsync(mode, ct);
+            }
+
+            ct.ThrowIfCancellationRequested();
+            await _pipeline.StartSessionAsync(_sessionTextContext, mode, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _stopRequestedForActiveSession = false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[ViewModel] Failed to prepare or start recording.");
+            _stopRequestedForActiveSession = false;
+            Status = AppStatus.Error;
+            StatusText = Status.ToDisplayString();
+            LastError = $"无法开始录音：{ex.Message}";
+            HasError = true;
+            IsRecording = false;
+            ReschedulePendingDraftCommitIfNeeded();
+        }
+        finally
+        {
+            IsStarting = false;
+            if (_stopRequestedForActiveSession && _pipeline.State == PipelineState.Listening)
+                RequestStopActiveSession();
+        }
     }
 
     private void BeginPendingDraftHotkeyIntent()
@@ -333,7 +399,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (Status != AppStatus.Listening && _pipeline.State != PipelineState.Listening)
+        if (IsStarting || (Status != AppStatus.Listening && _pipeline.State != PipelineState.Listening))
         {
             _stopRequestedForActiveSession = true;
             return;
@@ -622,11 +688,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void CopyToClipboard()
+    private async Task CopyToClipboard()
     {
-        if (!string.IsNullOrEmpty(CleanedText))
+        var text = CleanedText;
+        if (string.IsNullOrEmpty(text)) return;
+        try
         {
-            Clipboard.SetText(CleanedText);
+            await StaTask.RunAsync(() =>
+            {
+                Clipboard.SetText(text);
+                return true;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[ViewModel] Failed to copy text.");
+            LastError = $"无法复制文字：{ex.Message}";
+            HasError = true;
         }
     }
 
@@ -635,12 +713,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var settingsVm = new SettingsViewModel(_deviceClient, _appSettings.Audio.DeviceId);
+            var settingsVm = new SettingsViewModel(_deviceClient, _appSettings.Audio.DeviceId, _logger);
             var settingsDialog = new SettingsDialog { DataContext = settingsVm };
 
             try
             {
-                await DialogHost.Show(settingsDialog, "RootDialog");
+                var dialogTask = DialogHost.Show(settingsDialog, "RootDialog");
+                _ = settingsVm.InitializeAsync();
+                await dialogTask;
 
                 if (settingsVm.Applied && settingsVm.SelectedDeviceId != null)
                 {
@@ -648,62 +728,54 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     _logger.LogInformation("[ViewModel] Settings applied. Device: {DeviceId}", newDeviceId);
 
                     // Update in-memory config so next recording session uses the new device
+                    await _deviceClient.SetActiveDeviceAsync(newDeviceId);
                     _appSettings.Audio.DeviceId = newDeviceId;
-                    _deviceClient.SetActiveDevice(newDeviceId);
 
                     // Persist to appsettings.json
-                    SaveDeviceIdToSettings(newDeviceId);
+                    await SaveDeviceIdToSettingsAsync(newDeviceId);
                 }
             }
             finally
             {
-                settingsVm.Dispose();
+                await settingsVm.DisposeAsync();
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[ViewModel] Failed to open settings dialog");
-            LastError = $"Failed to open settings: {ex.Message}";
+            LastError = $"麦克风设置未完成：{ex.Message}";
             HasError = true;
         }
     }
 
-    private void SaveDeviceIdToSettings(string deviceId)
+    private Task SaveDeviceIdToSettingsAsync(string deviceId) => Task.Run(async () =>
     {
-        try
+        var exeDir = Path.GetDirectoryName(Environment.ProcessPath
+            ?? System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!;
+        var settingsPath = Path.Combine(exeDir, "appsettings.json");
+
+        if (!File.Exists(settingsPath))
         {
-            var exeDir = Path.GetDirectoryName(Environment.ProcessPath
-                ?? System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName)!;
-            var settingsPath = Path.Combine(exeDir, "appsettings.json");
-
-            if (!File.Exists(settingsPath))
-            {
-                _logger.LogWarning("[ViewModel] appsettings.json not found at {Path}", settingsPath);
-                return;
-            }
-
-            var json = File.ReadAllText(settingsPath);
-            var doc = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })
-                      ?? new JsonObject();
-
-            // Ensure Audio section exists
-            if (doc["Audio"] is not JsonObject audioNode)
-            {
-                audioNode = new JsonObject();
-                doc["Audio"] = audioNode;
-            }
-            audioNode["DeviceId"] = deviceId;
-
-            var writeOptions = new JsonSerializerOptions { WriteIndented = true };
-            File.WriteAllText(settingsPath, doc.ToJsonString(writeOptions));
-
-            _logger.LogInformation("[ViewModel] Saved DeviceId to appsettings.json");
+            throw new FileNotFoundException("找不到应用配置文件，麦克风选择未保存。", settingsPath);
         }
-        catch (Exception ex)
+
+        var json = await File.ReadAllTextAsync(settingsPath);
+        var doc = JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })
+                  ?? new JsonObject();
+
+        // Ensure Audio section exists
+        if (doc["Audio"] is not JsonObject audioNode)
         {
-            _logger.LogError(ex, "[ViewModel] Failed to save settings to appsettings.json");
+            audioNode = new JsonObject();
+            doc["Audio"] = audioNode;
         }
-    }
+        audioNode["DeviceId"] = deviceId;
+
+        var writeOptions = new JsonSerializerOptions { WriteIndented = true };
+        await File.WriteAllTextAsync(settingsPath, doc.ToJsonString(writeOptions));
+
+        _logger.LogInformation("[ViewModel] Saved DeviceId to appsettings.json");
+    });
 
     [RelayCommand]
     private void DismissError()
@@ -726,6 +798,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _audioLevelTimer.Stop();
+        _audioLevelTimer.Tick -= OnAudioLevelTick;
         // Unsubscribe pipeline events
         _pipeline.StateChanged -= OnPipelineStateChanged;
         _pipeline.SessionCompleted -= OnSessionCompleted;

@@ -4,19 +4,21 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-        xmlns:vm="clr-namespace:WhisperDesk.ViewModels"
+        xmlns:models="clr-namespace:WhisperDesk.Models"
         mc:Ignorable="d"
         Title="WhisperDesk"
         Icon="pack://application:,,,/Assets/app.ico"
-        Width="520" Height="680"
-        MinWidth="420" MinHeight="500"
+        Width="520" Height="580"
+        MinWidth="420" MinHeight="480"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="CanResizeWithGrip"
-        Background="{DynamicResource MaterialDesign.Brush.Background}"
-        TextElement.Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+        ResizeMode="CanResize"
+        Background="{DynamicResource WhisperDesk.Brush.Surface}"
+        TextElement.Foreground="{DynamicResource WhisperDesk.Brush.Text}"
         TextElement.FontWeight="Regular"
         TextElement.FontSize="14"
-        FontFamily="{materialDesign:MaterialDesignFont}"
+        FontFamily="{StaticResource WhisperDesk.Font}"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
         StateChanged="Window_StateChanged"
         Closing="Window_Closing">
 
@@ -24,233 +26,237 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </Window.Resources>
 
-    <materialDesign:DialogHost Identifier="RootDialog">
+    <materialDesign:DialogHost Identifier="RootDialog"
+                               Loaded="DialogHost_Loaded"
+                               DialogBackground="{DynamicResource WhisperDesk.Brush.Surface}">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Title Bar -->
-            <materialDesign:ColorZone Grid.Row="0" Mode="PrimaryMid" Padding="16">
-                <DockPanel>
-                    <materialDesign:PackIcon DockPanel.Dock="Left"
-                                             Kind="Microphone"
-                                             Width="28" Height="28"
-                                             VerticalAlignment="Center"
-                                             Margin="0,0,12,0" />
-                    <!-- Settings button (right-aligned) -->
-                    <Button DockPanel.Dock="Right"
-                            Style="{StaticResource MaterialDesignIconForegroundButton}"
-                            ToolTip="Settings"
-                            Command="{Binding OpenSettingsCommand}"
-                            VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="Cog" Width="22" Height="22" />
-                    </Button>
-                    <StackPanel>
-                        <TextBlock Text="WhisperDesk"
-                                   Style="{StaticResource MaterialDesignHeadline6TextBlock}" />
-                        <TextBlock Text="Voice to text"
-                                   Style="{StaticResource MaterialDesignCaptionTextBlock}"
-                                   Opacity="0.7" />
-                    </StackPanel>
-                </DockPanel>
-            </materialDesign:ColorZone>
-
-            <!-- Status Bar -->
-            <materialDesign:Card Grid.Row="1" Margin="16,12,16,0"
-                                 UniformCornerRadius="12"
-                                 Padding="16">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Status indicator dot -->
-                    <Ellipse Grid.Column="0"
-                             Width="12" Height="12"
-                             Margin="0,0,12,0"
-                             VerticalAlignment="Center">
+            <Grid Grid.Row="0" Margin="24,16,18,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="转写结果" FontSize="14" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <Ellipse Width="6" Height="6" Margin="0,0,6,0" VerticalAlignment="Center">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="#4CAF50" />
+                                <Setter Property="Fill" Value="{StaticResource WhisperDesk.Brush.SecondaryText}" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsRecording}" Value="True">
-                                        <Setter Property="Fill" Value="#F44336" />
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Listening}">
+                                        <Setter Property="Fill" Value="{StaticResource WhisperDesk.Brush.Danger}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Ready}">
+                                        <Setter Property="Fill" Value="{StaticResource WhisperDesk.Brush.Success}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Error}">
+                                        <Setter Property="Fill" Value="{StaticResource WhisperDesk.Brush.Danger}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Ellipse.Style>
                     </Ellipse>
-
-                    <!-- Status text -->
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding StatusText}"
-                               Style="{StaticResource MaterialDesignBody1TextBlock}"
+                    <TextBlock Text="{Binding StatusText}" FontSize="12"
+                               Foreground="{DynamicResource WhisperDesk.Brush.SecondaryText}"
+                               AutomationProperties.LiveSetting="Polite"
                                VerticalAlignment="Center" />
+                </StackPanel>
+                <Button Grid.Column="1" Style="{StaticResource WhisperDesk.IconButton}"
+                        ToolTip="麦克风设置" AutomationProperties.Name="麦克风设置"
+                        Command="{Binding OpenSettingsCommand}">
+                    <materialDesign:PackIcon Kind="CogOutline" Width="18" Height="18" />
+                </Button>
+            </Grid>
 
-                    <!-- Audio level meter -->
-                    <ProgressBar Grid.Column="2"
-                                 Width="80" Height="8"
-                                 Value="{Binding AudioLevel}"
-                                 Maximum="1.0"
-                                 VerticalAlignment="Center"
-                                 Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}" />
-                </Grid>
-            </materialDesign:Card>
-
-            <!-- Main Content - Transcription Display -->
-            <Grid Grid.Row="2" Margin="16,12,16,0">
+            <Grid Grid.Row="1" Margin="24,16,24,12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-
-                <!-- Cleaned text (primary) -->
-                <materialDesign:Card Grid.Row="0" UniformCornerRadius="12" Padding="0">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <DockPanel Grid.Row="0" Margin="16,12,8,0">
-                            <materialDesign:PackIcon Kind="TextBoxCheck"
-                                                     VerticalAlignment="Center"
-                                                     Margin="0,0,8,0"
-                                                     Foreground="{DynamicResource PrimaryHueMidBrush}" />
-                            <TextBlock Text="Cleaned Text"
-                                       Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
-                                       VerticalAlignment="Center" />
-                            <StackPanel DockPanel.Dock="Right"
-                                        HorizontalAlignment="Right"
-                                        Orientation="Horizontal">
-                                <Button Style="{StaticResource MaterialDesignIconButton}"
-                                        ToolTip="Copy to clipboard"
-                                        Command="{Binding CopyToClipboardCommand}">
-                                    <materialDesign:PackIcon Kind="ContentCopy" />
-                                </Button>
-                            </StackPanel>
-                        </DockPanel>
-                        <TextBox Grid.Row="1"
-                                 Text="{Binding CleanedText, Mode=OneWay}"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 AcceptsReturn="True"
-                                 VerticalScrollBarVisibility="Auto"
-                                 Margin="16,4,16,12"
-                                 BorderThickness="0"
-                                 FontSize="15" />
-                    </Grid>
-                </materialDesign:Card>
-
-                <GridSplitter Grid.Row="1" Height="8"
-                              HorizontalAlignment="Stretch"
-                              Background="Transparent" />
-
-                <!-- Raw text (secondary) -->
-                <materialDesign:Card Grid.Row="2" UniformCornerRadius="12" Padding="0">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <DockPanel Grid.Row="0" Margin="16,12,16,0">
-                            <materialDesign:PackIcon Kind="TextBoxOutline"
-                                                     VerticalAlignment="Center"
-                                                     Margin="0,0,8,0"
-                                                     Opacity="0.5" />
-                            <TextBlock Text="Raw Transcription"
-                                       Style="{StaticResource MaterialDesignSubtitle2TextBlock}"
-                                       Opacity="0.6"
-                                       VerticalAlignment="Center" />
-                        </DockPanel>
-                        <TextBox Grid.Row="1"
-                                 Text="{Binding RawText, Mode=OneWay}"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 AcceptsReturn="True"
-                                 VerticalScrollBarVisibility="Auto"
-                                 Margin="16,4,16,12"
-                                 BorderThickness="0"
-                                 Opacity="0.7"
-                                 FontSize="13" />
-                    </Grid>
-                </materialDesign:Card>
+                <TextBox x:Name="ResultTextBox" Grid.Row="0"
+                         Style="{StaticResource WhisperDesk.TranscriptTextBox}"
+                         AutomationProperties.Name="整理后的文字"
+                         Text="{Binding CleanedText, Mode=OneWay}"
+                         Visibility="{Binding HasCleanedText, Converter={StaticResource BoolToVis}}" />
+                <StackPanel Grid.Row="0" VerticalAlignment="Center" Margin="12">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasCleanedText}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <materialDesign:PackIcon Kind="MicrophoneOutline" Width="30" Height="30"
+                                             Foreground="{DynamicResource WhisperDesk.Brush.Accent}"
+                                             HorizontalAlignment="Center" Margin="0,0,0,20" />
+                    <TextBlock FontSize="18" TextAlignment="Center" TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="想说什么，直接说。" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasRawText}" Value="True">
+                                        <Setter Property="Text" Value="可以展开原文，查看识别结果。" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Listening}">
+                                        <Setter Property="Text" Value="正在聆听你的声音…" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Transcribing}">
+                                        <Setter Property="Text" Value="正在把声音变成文字…" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Cleaning}">
+                                        <Setter Property="Text" Value="正在整理这段文字…" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Error}">
+                                        <Setter Property="Text" Value="这次处理未完成，请查看下方提示。" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="按住快捷键说话，松开后自动整理。" FontSize="12"
+                               Foreground="{DynamicResource WhisperDesk.Brush.SecondaryText}"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0" />
+                </StackPanel>
+                <Button Grid.Row="1" Style="{StaticResource WhisperDesk.QuietButton}"
+                        HorizontalAlignment="Right" Margin="0,8,-10,0"
+                        AutomationProperties.Name="复制文字" ToolTip="复制整理后的文字"
+                        Command="{Binding CopyToClipboardCommand}"
+                        Visibility="{Binding HasCleanedText, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="ContentCopy" Width="15" Height="15"
+                                                 VerticalAlignment="Center" Margin="0,0,7,0" />
+                        <TextBlock Text="复制文字" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
             </Grid>
 
-            <!-- Error Banner -->
-            <materialDesign:Card Grid.Row="3"
-                                 Margin="16,12,16,0"
-                                 UniformCornerRadius="8"
-                                 Background="#F44336"
-                                 Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
-                <DockPanel Margin="12,8">
+            <Border Grid.Row="2" Margin="24,0,24,12" BorderThickness="0,1,0,0"
+                    BorderBrush="{DynamicResource WhisperDesk.Brush.Border}"
+                    Visibility="{Binding HasRawText, Converter={StaticResource BoolToVis}}">
+                <Expander x:Name="RawTranscriptExpander" Header="查看原文"
+                          IsExpanded="False" Style="{StaticResource WhisperDesk.TranscriptExpander}">
+                    <TextBox Style="{StaticResource WhisperDesk.TranscriptTextBox}"
+                             Text="{Binding RawText, Mode=OneWay}" MaxHeight="120" FontSize="14"
+                             AutomationProperties.Name="原始转写"
+                             Foreground="{DynamicResource WhisperDesk.Brush.SecondaryText}" />
+                </Expander>
+            </Border>
+
+            <Border Grid.Row="3" Margin="24,0,24,16" CornerRadius="8"
+                    Background="{DynamicResource WhisperDesk.Brush.DangerSubtle}"
+                    Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
+                <DockPanel Margin="12,8" LastChildFill="True">
                     <Button DockPanel.Dock="Right"
-                            Style="{StaticResource MaterialDesignIconForegroundButton}"
-                            Foreground="White"
+                            Style="{StaticResource WhisperDesk.IconButton}"
+                            Foreground="{DynamicResource WhisperDesk.Brush.Danger}"
+                            AutomationProperties.Name="关闭错误提示" ToolTip="关闭提示"
                             Command="{Binding DismissErrorCommand}">
-                        <materialDesign:PackIcon Kind="Close" />
+                        <materialDesign:PackIcon Kind="Close" Width="16" Height="16" />
                     </Button>
-                    <TextBlock Text="{Binding LastError}"
-                               Foreground="White"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Center" />
+                    <ScrollViewer MaxHeight="100" VerticalScrollBarVisibility="Auto">
+                        <TextBlock Text="{Binding LastError}" Margin="0,6,8,6"
+                                   Foreground="{DynamicResource WhisperDesk.Brush.Danger}"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Assertive" />
+                    </ScrollViewer>
                 </DockPanel>
-            </materialDesign:Card>
+            </Border>
 
-            <!-- Bottom Controls -->
-            <materialDesign:Card Grid.Row="4"
-                                 Margin="16,12,16,16"
-                                 UniformCornerRadius="12"
-                                 Padding="12">
+            <Border Grid.Row="4" Background="{DynamicResource WhisperDesk.Brush.Subtle}"
+                    BorderBrush="{DynamicResource WhisperDesk.Brush.Border}" BorderThickness="0,1,0,0"
+                    Padding="24,18">
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-
-                    <!-- Hotkey hints -->
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding PushToTalkHint}"
-                                   Style="{StaticResource MaterialDesignCaptionTextBlock}" Opacity="0.6" />
-                    </StackPanel>
-
-                    <!-- Record button -->
-                    <Button Grid.Column="1"
-                            Width="56" Height="56"
+                    <ProgressBar Grid.Row="0" Grid.ColumnSpan="2" Height="3" Margin="0,0,0,14"
+                                 Value="{Binding AudioLevel}" Maximum="1"
+                                 Foreground="{DynamicResource WhisperDesk.Brush.Accent}"
+                                 Background="{DynamicResource WhisperDesk.Brush.AccentSubtle}"
+                                 AutomationProperties.Name="麦克风音量"
+                                 Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}" />
+                    <Button Grid.Row="1" Grid.Column="0" MinWidth="122"
                             Command="{Binding ToggleRecordingCommand}"
-                            ToolTip="Click to toggle recording">
+                            AutomationProperties.Name="{Binding Text, ElementName=RecordButtonLabel}"
+                            ToolTip="点击开始或结束录音">
                         <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFloatingActionButton}">
-                                <Setter Property="Background" Value="{DynamicResource PrimaryHueMidBrush}" />
+                            <Style TargetType="Button" BasedOn="{StaticResource WhisperDesk.PrimaryButton}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsRecording}" Value="True">
-                                        <Setter Property="Background" Value="#F44336" />
+                                        <Setter Property="Background" Value="{StaticResource WhisperDesk.Brush.Danger}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Transcribing}">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Cleaning}">
+                                        <Setter Property="IsEnabled" Value="False" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
-                        <materialDesign:PackIcon Width="28" Height="28">
-                            <materialDesign:PackIcon.Style>
-                                <Style TargetType="materialDesign:PackIcon">
-                                    <Setter Property="Kind" Value="Microphone" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsRecording}" Value="True">
-                                            <Setter Property="Kind" Value="Stop" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </materialDesign:PackIcon.Style>
-                        </materialDesign:PackIcon>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Width="17" Height="17" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <materialDesign:PackIcon.Style>
+                                    <Style TargetType="materialDesign:PackIcon">
+                                        <Setter Property="Kind" Value="MicrophoneOutline" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsStarting}" Value="True">
+                                                <Setter Property="Kind" Value="Stop" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                                                <Setter Property="Kind" Value="Stop" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </materialDesign:PackIcon.Style>
+                            </materialDesign:PackIcon>
+                            <TextBlock x:Name="RecordButtonLabel" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="开始录音" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsStarting}" Value="True">
+                                                <Setter Property="Text" Value="结束录音" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                                                <Setter Property="Text" Value="结束录音" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Transcribing}">
+                                                <Setter Property="Text" Value="正在转写" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Cleaning}">
+                                                <Setter Property="Text" Value="正在整理" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
                     </Button>
+                    <StackPanel Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <TextBlock Text="{Binding PushToTalkHint}" FontSize="12" TextAlignment="Right"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource WhisperDesk.Brush.SecondaryText}" />
+                        <TextBlock Text="{Binding InstructHint}" FontSize="11" TextAlignment="Right"
+                                   TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Foreground="{DynamicResource WhisperDesk.Brush.SecondaryText}" />
+                    </StackPanel>
                 </Grid>
-            </materialDesign:Card>
+            </Border>
         </Grid>
     </materialDesign:DialogHost>
 </Window>

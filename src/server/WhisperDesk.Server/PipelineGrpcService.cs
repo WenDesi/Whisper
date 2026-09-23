@@ -140,6 +140,30 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
         }
     }
 
+    public override async Task SubscribeAudioLevel(
+        SubscribeRequest request, IServerStreamWriter<AudioLevelEvent> responseStream, ServerCallContext context)
+    {
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, _shutdownToken);
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
+        var previousLevel = float.NaN;
+        try
+        {
+            while (await timer.WaitForNextTickAsync(linkedCts.Token))
+            {
+                var level = _pipeline.AudioLevel;
+                if (level == 0 && previousLevel == 0)
+                    continue;
+
+                // No event queue: a slow reader skips old samples instead of delaying pipeline events.
+                await responseStream.WriteAsync(new AudioLevelEvent { Level = level }, linkedCts.Token);
+                previousLevel = level;
+            }
+        }
+        catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
+        {
+        }
+    }
+
     private static PipelineStateDto MapState(PipelineState state) => state switch
     {
         PipelineState.Idle => PipelineStateDto.Idle,
