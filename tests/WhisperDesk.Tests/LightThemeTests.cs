@@ -55,16 +55,30 @@ public class LightThemeTests
                     MaxHeight = 120
                 }
             };
+            expander.Resources.MergedDictionaries.Add(new CustomColorTheme
+            {
+                BaseTheme = BaseTheme.Light,
+                PrimaryColor = Color.FromRgb(0x40, 0x5B, 0x70),
+                SecondaryColor = Color.FromRgb(0x40, 0x5B, 0x70)
+            });
+            expander.Resources.MergedDictionaries.Add(Assert.IsType<ResourceDictionary>(
+                Application.LoadComponent(new Uri(
+                    "/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign2.Defaults.xaml", UriKind.Relative))));
+            expander.Resources.MergedDictionaries.Add(theme);
             Assert.True(expander.ApplyTemplate());
             var header = Assert.IsType<ToggleButton>(expander.Template.FindName("HeaderButton", expander));
             header.ApplyTemplate();
             var surface = Assert.IsType<Border>(header.Template.FindName("HeaderSurface", header));
             var label = Assert.IsType<ContentPresenter>(header.Template.FindName("HeaderLabel", header));
+            var chevron = Assert.IsType<System.Windows.Shapes.Path>(header.Template.FindName("Chevron", header));
             var content = Assert.IsType<ContentPresenter>(expander.Template.FindName("ExpandedContent", expander));
 
             expander.Measure(new Size(360, double.PositiveInfinity));
-            expander.Arrange(new Rect(expander.DesiredSize));
+            expander.Arrange(new Rect(0, 0, 360, expander.DesiredSize.Height));
             expander.UpdateLayout();
+            Assert.Equal(360, header.ActualWidth);
+            Assert.True(label.ActualWidth >= 48, $"The four-character header is clipped to {label.ActualWidth}px.");
+            Assert.True(chevron.TranslatePoint(new Point(), expander).X >= 340, "The chevron should stay at the right edge.");
             Assert.Equal(0, Assert.IsType<SolidColorBrush>(surface.Background).Color.A);
             Assert.Equal(0, label.TranslatePoint(new Point(), expander).X);
             Assert.Equal(36, expander.ActualHeight);
