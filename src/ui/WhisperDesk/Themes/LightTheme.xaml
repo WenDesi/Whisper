@@ -1,0 +1,195 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Color x:Key="WhisperDesk.Color.Surface">#FCFDFE</Color>
+    <Color x:Key="WhisperDesk.Color.Subtle">#F2F5F7</Color>
+    <Color x:Key="WhisperDesk.Color.Text">#27333C</Color>
+    <Color x:Key="WhisperDesk.Color.SecondaryText">#576571</Color>
+    <Color x:Key="WhisperDesk.Color.Border">#DFE5E9</Color>
+    <Color x:Key="WhisperDesk.Color.Accent">#405B70</Color>
+    <Color x:Key="WhisperDesk.Color.AccentHover">#344C60</Color>
+    <Color x:Key="WhisperDesk.Color.AccentPressed">#2B4052</Color>
+    <Color x:Key="WhisperDesk.Color.AccentSubtle">#E2E9ED</Color>
+    <Color x:Key="WhisperDesk.Color.Success">#436657</Color>
+    <Color x:Key="WhisperDesk.Color.Danger">#A9443E</Color>
+    <Color x:Key="WhisperDesk.Color.DangerSubtle">#FBEEEC</Color>
+
+    <SolidColorBrush x:Key="WhisperDesk.Brush.Surface" Color="{StaticResource WhisperDesk.Color.Surface}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.Subtle" Color="{StaticResource WhisperDesk.Color.Subtle}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.Text" Color="{StaticResource WhisperDesk.Color.Text}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.SecondaryText" Color="{StaticResource WhisperDesk.Color.SecondaryText}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.Border" Color="{StaticResource WhisperDesk.Color.Border}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.Accent" Color="{StaticResource WhisperDesk.Color.Accent}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.AccentHover" Color="{StaticResource WhisperDesk.Color.AccentHover}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.AccentPressed" Color="{StaticResource WhisperDesk.Color.AccentPressed}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.AccentSubtle" Color="{StaticResource WhisperDesk.Color.AccentSubtle}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.Success" Color="{StaticResource WhisperDesk.Color.Success}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.Danger" Color="{StaticResource WhisperDesk.Color.Danger}" />
+    <SolidColorBrush x:Key="WhisperDesk.Brush.DangerSubtle" Color="{StaticResource WhisperDesk.Color.DangerSubtle}" />
+    <FontFamily x:Key="WhisperDesk.Font">Segoe UI Variable, Microsoft YaHei UI</FontFamily>
+
+    <Style x:Key="WhisperDesk.PrimaryButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource WhisperDesk.Font}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Background" Value="{StaticResource WhisperDesk.Brush.Accent}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="2" />
+        <Setter Property="Padding" Value="14,8" />
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="ButtonBorder" CornerRadius="8"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource WhisperDesk.Brush.SecondaryText}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource WhisperDesk.Brush.AccentHover}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{StaticResource WhisperDesk.Brush.AccentPressed}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="WhisperDesk.QuietButton" TargetType="Button" BasedOn="{StaticResource WhisperDesk.PrimaryButton}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource WhisperDesk.Brush.Accent}" />
+        <Setter Property="FontWeight" Value="Regular" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="MinHeight" Value="36" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource WhisperDesk.Brush.AccentSubtle}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{StaticResource WhisperDesk.Brush.Border}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="WhisperDesk.IconButton" TargetType="Button" BasedOn="{StaticResource WhisperDesk.QuietButton}">
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Padding" Value="6" />
+    </Style>
+
+    <Style x:Key="WhisperDesk.TranscriptExpander" TargetType="Expander">
+        <Setter Property="FontFamily" Value="{StaticResource WhisperDesk.Font}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource WhisperDesk.Brush.Accent}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ToggleButton x:Name="HeaderButton" Grid.Row="0" MinHeight="36"
+                                      Content="{TemplateBinding Header}"
+                                      ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                      FontFamily="{TemplateBinding FontFamily}"
+                                      FontSize="{TemplateBinding FontSize}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                      Cursor="Hand" FocusVisualStyle="{x:Null}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Grid>
+                                        <Border x:Name="HeaderSurface" Background="Transparent" CornerRadius="4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter x:Name="HeaderLabel" Grid.Column="0"
+                                                                  HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                                  RecognizesAccessKey="True" />
+                                                <Path x:Name="Chevron" Grid.Column="1" Data="M 1,1 L 5,5 L 9,1"
+                                                      Width="10" Height="6" Margin="12,0,4,0"
+                                                      VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"
+                                                      Stroke="{TemplateBinding Foreground}" StrokeThickness="1.5"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                            </Grid>
+                                        </Border>
+                                        <Border x:Name="FocusOutline" BorderThickness="1" CornerRadius="4"
+                                                BorderBrush="{StaticResource WhisperDesk.Brush.Accent}"
+                                                IsHitTestVisible="False" Visibility="Collapsed" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="HeaderSurface" Property="Background" Value="{StaticResource WhisperDesk.Brush.Subtle}" />
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter TargetName="FocusOutline" Property="Visibility" Value="Visible" />
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Chevron" Property="RenderTransform">
+                                                <Setter.Value><RotateTransform Angle="180" /></Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter x:Name="ExpandedContent" Grid.Row="1" ContentSource="Content"
+                                          Margin="0,2,0,4" Visibility="Collapsed" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="ExpandedContent" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="WhisperDesk.TranscriptTextBox" TargetType="TextBox">
+        <Setter Property="FontFamily" Value="{StaticResource WhisperDesk.Font}" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="Foreground" Value="{StaticResource WhisperDesk.Brush.Text}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0,4" />
+        <Setter Property="IsReadOnly" Value="True" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="AcceptsReturn" Value="True" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="SelectionBrush" Value="{StaticResource WhisperDesk.Brush.AccentSubtle}" />
+        <Setter Property="SelectionOpacity" Value="1" />
+        <Setter Property="TextBlock.LineHeight" Value="28" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

@@ -1,5 +1,3 @@
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -8,13 +6,15 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using WhisperDesk.Models;
 using WhisperDesk.Services;
-using PixelFormat = System.Drawing.Imaging.PixelFormat;
 
 namespace WhisperDesk.Views;
 
 public partial class OverlayWindow : Window
 {
     private DispatcherTimer? _autoHideTimer;
+    private readonly AudioWaveform _waveform = new();
+    private readonly ScaleTransform[] _waveScales;
+    private bool _listening;
 
     // Win32 window styles to prevent focus stealing
     [DllImport("user32.dll")]
@@ -95,6 +95,12 @@ public partial class OverlayWindow : Window
     public OverlayWindow()
     {
         InitializeComponent();
+        _waveScales = [WaveScale1, WaveScale2, WaveScale3, WaveScale4, WaveScale5];
+        ((Storyboard)FindResource("FadeOut")).Completed += (_, _) =>
+        {
+            if (RootContainer.Opacity < 0.1)
+                StopActiveAnimations();
+        };
 
         // Apply WS_EX_NOACTIVATE after window handle is created
         SourceInitialized += (_, _) =>
@@ -153,7 +159,7 @@ public partial class OverlayWindow : Window
                     ShowDone();
                     break;
                 case AppStatus.Error:
-                    ShowError(errorMessage ?? "Error");
+                    ShowError(errorMessage ?? AppStatus.Error.ToDisplayString());
                     break;
                 default:
                     HideOverlay();
@@ -164,7 +170,6 @@ public partial class OverlayWindow : Window
             if (status == AppStatus.Listening)
             {
                 PositionOnCurrentScreen();
-                ApplyAdaptiveBorder();
             }
 
             // Fade in via opacity — window is always "shown", no Show() call
@@ -189,7 +194,7 @@ public partial class OverlayWindow : Window
             _autoHideTimer?.Stop();
             StopActiveAnimations();
 
-            SetAccentColor("#5B5FC7");
+            SetAccentColor("WhisperDesk.Color.Accent");
 
             WaveformPanel.Visibility = Visibility.Collapsed;
             SpinnerPanel.Visibility = Visibility.Collapsed;
@@ -202,7 +207,6 @@ public partial class OverlayWindow : Window
             StartDraftProgress(commitDelay);
 
             PositionOnCurrentScreen();
-            ApplyAdaptiveBorder();
 
             if (RootContainer.Opacity < 0.1)
             {
@@ -214,18 +218,30 @@ public partial class OverlayWindow : Window
 
     private void ShowListening()
     {
-        SetAccentColor("#7C4DFF");
+        SetAccentColor("WhisperDesk.Color.Danger");
 
         WaveformPanel.Visibility = Visibility.Visible;
         SpinnerPanel.Visibility = Visibility.Collapsed;
         CheckIcon.Visibility = Visibility.Collapsed;
         ErrorIcon.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Listening...";
+        StatusText.Text = AppStatus.Listening.ToDisplayString();
 
-        var waveform = (Storyboard)FindResource("WaveformAnimation");
-        waveform.Begin(this, true);
-        var glow = (Storyboard)FindResource("GlowPulse");
-        glow.Begin(this, true);
+        _listening = true;
+    }
+
+    public void UpdateAudioLevel(float level)
+    {
+        Dispatcher.VerifyAccess();
+        if (!_listening) return;
+
+        _waveform.Push(level);
+        var scales = _waveform.Scales;
+        for (var i = 0; i < _waveScales.Length; i++)
+        {
+            if (Math.Abs(_waveScales[i].ScaleY - scales[i]) < 0.001) continue;
+            _waveScales[i].BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(scales[i], TimeSpan.FromMilliseconds(50)));
+        }
     }
 
     private void ResetStatusTextLayout()
@@ -255,30 +271,30 @@ public partial class OverlayWindow : Window
 
     private void ShowTranscribing()
     {
-        SetAccentColor("#448AFF");
+        SetAccentColor("WhisperDesk.Color.Accent");
 
         WaveformPanel.Visibility = Visibility.Collapsed;
         SpinnerPanel.Visibility = Visibility.Visible;
         CheckIcon.Visibility = Visibility.Collapsed;
         ErrorIcon.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Transcribing...";
+        StatusText.Text = AppStatus.Transcribing.ToDisplayString();
 
-        SetSpinnerColor("#448AFF");
+        SetSpinnerColor("WhisperDesk.Color.Accent");
         var spinner = (Storyboard)FindResource("SpinnerAnimation");
         spinner.Begin(this, true);
     }
 
     private void ShowCleaning()
     {
-        SetAccentColor("#00BFA5");
+        SetAccentColor("WhisperDesk.Color.Accent");
 
         WaveformPanel.Visibility = Visibility.Collapsed;
         SpinnerPanel.Visibility = Visibility.Visible;
         CheckIcon.Visibility = Visibility.Collapsed;
         ErrorIcon.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Polishing...";
+        StatusText.Text = AppStatus.Cleaning.ToDisplayString();
 
-        SetSpinnerColor("#00BFA5");
+        SetSpinnerColor("WhisperDesk.Color.Accent");
         var spinner = (Storyboard)FindResource("SpinnerAnimation");
         spinner.Begin(this, true);
     }
@@ -287,13 +303,13 @@ public partial class OverlayWindow : Window
     {
         StopActiveAnimations();
 
-        SetAccentColor("#69F0AE");
+        SetAccentColor("WhisperDesk.Color.Success");
 
         WaveformPanel.Visibility = Visibility.Collapsed;
         SpinnerPanel.Visibility = Visibility.Collapsed;
         CheckIcon.Visibility = Visibility.Visible;
         ErrorIcon.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Done!";
+        StatusText.Text = AppStatus.Ready.ToDisplayString();
 
         // Auto-hide after 2 seconds
         // Note: paste is handled by MainViewModel.OnSessionCompleted after clipboard write completes
@@ -305,7 +321,7 @@ public partial class OverlayWindow : Window
     {
         StopActiveAnimations();
 
-        SetAccentColor("#FF5252");
+        SetAccentColor("WhisperDesk.Color.Danger");
 
         WaveformPanel.Visibility = Visibility.Collapsed;
         SpinnerPanel.Visibility = Visibility.Collapsed;
@@ -322,24 +338,22 @@ public partial class OverlayWindow : Window
     {
         Dispatcher.InvokeAsync(() =>
         {
+            _listening = false;
             if (RootContainer.Opacity < 0.1) return;
 
             var fadeOut = (Storyboard)FindResource("FadeOut");
-            fadeOut.Completed += (_, _) => StopActiveAnimations();
             fadeOut.Begin(this);
         });
     }
 
-    private void SetAccentColor(string hex)
+    private void SetAccentColor(string resourceKey)
     {
-        var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
-        GlowBrush.Color = color;
-        BorderAccent.Color = color;
+        BorderAccent.Color = (System.Windows.Media.Color)FindResource(resourceKey);
     }
 
-    private void SetSpinnerColor(string hex)
+    private void SetSpinnerColor(string resourceKey)
     {
-        var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
+        var color = (System.Windows.Media.Color)FindResource(resourceKey);
         SpinDot1.Color = color;
         SpinDot2.Color = color;
         SpinDot3.Color = color;
@@ -348,14 +362,17 @@ public partial class OverlayWindow : Window
 
     private void StopActiveAnimations()
     {
+        _listening = false;
+        _waveform.Reset();
+        foreach (var scale in _waveScales)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleY = AudioWaveform.MinimumScale;
+        }
         try
         {
-            var waveform = (Storyboard)FindResource("WaveformAnimation");
-            waveform.Stop(this);
             var spinner = (Storyboard)FindResource("SpinnerAnimation");
             spinner.Stop(this);
-            var glow = (Storyboard)FindResource("GlowPulse");
-            glow.Stop(this);
         }
         catch { /* animations may not be started */ }
     }
@@ -479,79 +496,4 @@ public partial class OverlayWindow : Window
         return 1.0;
     }
 
-    /// <summary>
-    /// Sample the screen behind the overlay position and set the border to the inverse color.
-    /// </summary>
-    private void ApplyAdaptiveBorder()
-    {
-        try
-        {
-            // Get overlay position in physical pixels for screen capture
-            if (!GetCursorPos(out var cursorPt)) return;
-            double dpiScale = GetDpiScaleForPoint(cursorPt);
-
-            int captureX = (int)(Left * dpiScale);
-            int captureY = (int)(Top * dpiScale);
-            int captureW = Math.Max((int)(200 * dpiScale), 1);
-            int captureH = Math.Max((int)(50 * dpiScale), 1);
-
-            // Capture screen region
-            using var bmp = new Bitmap(captureW, captureH, PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(bmp))
-            {
-                g.CopyFromScreen(captureX, captureY, 0, 0, new System.Drawing.Size(captureW, captureH));
-            }
-
-            // Fast average color using LockBits
-            var data = bmp.LockBits(
-                new Rectangle(0, 0, captureW, captureH),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
-
-            long totalR = 0, totalG = 0, totalB = 0;
-            int pixelCount = captureW * captureH;
-            int stride = data.Stride;
-            int bytesPerPixel = 4;
-
-            unsafe
-            {
-                byte* ptr = (byte*)data.Scan0;
-                // Sample every 4th pixel for speed
-                for (int y = 0; y < captureH; y += 2)
-                {
-                    byte* row = ptr + y * stride;
-                    for (int x = 0; x < captureW; x += 2)
-                    {
-                        int offset = x * bytesPerPixel;
-                        totalB += row[offset];
-                        totalG += row[offset + 1];
-                        totalR += row[offset + 2];
-                    }
-                }
-            }
-
-            bmp.UnlockBits(data);
-
-            int sampledPixels = (captureW / 2) * (captureH / 2);
-            if (sampledPixels == 0) return;
-
-            byte avgR = (byte)(totalR / sampledPixels);
-            byte avgG = (byte)(totalG / sampledPixels);
-            byte avgB = (byte)(totalB / sampledPixels);
-
-            // Inverse color for maximum contrast
-            byte invR = (byte)(255 - avgR);
-            byte invG = (byte)(255 - avgG);
-            byte invB = (byte)(255 - avgB);
-
-            // Apply as border color
-            var inverseColor = System.Windows.Media.Color.FromRgb(invR, invG, invB);
-            BorderAccent.Color = inverseColor;
-            BorderAccent.Opacity = 0.7;
-        }
-        catch
-        {
-            // Fallback: keep existing border color
-        }
-    }
 }

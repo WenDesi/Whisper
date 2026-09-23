@@ -1,6 +1,7 @@
 <Window x:Class="WhisperDesk.Views.OverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:WhisperDesk.Models"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -8,56 +9,16 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         IsHitTestVisible="False"
+        FontFamily="{StaticResource WhisperDesk.Font}"
+        TextOptions.TextFormattingMode="Display"
         SizeToContent="WidthAndHeight"
         ResizeMode="NoResize">
 
     <Window.Resources>
-        <!-- Waveform bar animation storyboards -->
-        <Storyboard x:Key="WaveformAnimation" RepeatBehavior="Forever">
-            <!-- Bar 1 -->
-            <DoubleAnimation Storyboard.TargetName="WaveBar1" Storyboard.TargetProperty="Height"
-                             From="4" To="18" Duration="0:0:0.3" AutoReverse="True"
-                             BeginTime="0:0:0.0">
-                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-            <!-- Bar 2 -->
-            <DoubleAnimation Storyboard.TargetName="WaveBar2" Storyboard.TargetProperty="Height"
-                             From="6" To="22" Duration="0:0:0.35" AutoReverse="True"
-                             BeginTime="0:0:0.05">
-                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-            <!-- Bar 3 (center, tallest) -->
-            <DoubleAnimation Storyboard.TargetName="WaveBar3" Storyboard.TargetProperty="Height"
-                             From="8" To="26" Duration="0:0:0.4" AutoReverse="True"
-                             BeginTime="0:0:0.1">
-                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-            <!-- Bar 4 -->
-            <DoubleAnimation Storyboard.TargetName="WaveBar4" Storyboard.TargetProperty="Height"
-                             From="6" To="20" Duration="0:0:0.35" AutoReverse="True"
-                             BeginTime="0:0:0.15">
-                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-            <!-- Bar 5 -->
-            <DoubleAnimation Storyboard.TargetName="WaveBar5" Storyboard.TargetProperty="Height"
-                             From="4" To="16" Duration="0:0:0.3" AutoReverse="True"
-                             BeginTime="0:0:0.2">
-                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-        </Storyboard>
-
         <!-- Spinner rotation -->
         <Storyboard x:Key="SpinnerAnimation" RepeatBehavior="Forever">
             <DoubleAnimation Storyboard.TargetName="SpinnerRotation" Storyboard.TargetProperty="Angle"
                              From="0" To="360" Duration="0:0:1.2">
-                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
-            </DoubleAnimation>
-        </Storyboard>
-
-        <!-- Glow pulse -->
-        <Storyboard x:Key="GlowPulse" RepeatBehavior="Forever">
-            <DoubleAnimation Storyboard.TargetName="GlowEffect" Storyboard.TargetProperty="Opacity"
-                             From="0.3" To="0.8" Duration="0:0:0.8" AutoReverse="True">
                 <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
             </DoubleAnimation>
         </Storyboard>
@@ -69,11 +30,11 @@
                 <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
             </DoubleAnimation>
             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX"
-                             From="0.85" To="1" Duration="0:0:0.2">
+                             From="0.98" To="1" Duration="0:0:0.15">
                 <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
             </DoubleAnimation>
             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY"
-                             From="0.85" To="1" Duration="0:0:0.2">
+                             From="0.98" To="1" Duration="0:0:0.15">
                 <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
             </DoubleAnimation>
         </Storyboard>
@@ -81,11 +42,11 @@
         <!-- Fade out -->
         <Storyboard x:Key="FadeOut">
             <DoubleAnimation Storyboard.TargetName="RootContainer" Storyboard.TargetProperty="Opacity"
-                             To="0" Duration="0:0:0.3">
+                             To="0" Duration="0:0:0.15">
                 <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseIn"/></DoubleAnimation.EasingFunction>
             </DoubleAnimation>
             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY"
-                             To="0.9" Duration="0:0:0.3">
+                             To="0.98" Duration="0:0:0.15">
                 <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseIn"/></DoubleAnimation.EasingFunction>
             </DoubleAnimation>
         </Storyboard>
@@ -96,47 +57,43 @@
             <ScaleTransform x:Name="ScaleTransform" CenterX="0.5" CenterY="0.5"/>
         </Grid.RenderTransform>
 
-        <!-- Outer glow -->
-        <Border x:Name="GlowEffect" CornerRadius="20" Opacity="0.5" Margin="-2">
-            <Border.Effect>
-                <BlurEffect Radius="12"/>
-            </Border.Effect>
-            <Border.Background>
-                <SolidColorBrush x:Name="GlowBrush" Color="#7C4DFF"/>
-            </Border.Background>
-        </Border>
-
         <!-- Main capsule -->
-        <Border x:Name="CapsuleBorder" CornerRadius="18" MinWidth="160" MinHeight="40"
-                Padding="14,8,14,8">
-            <Border.Background>
-                <SolidColorBrush Color="#1A1A2E" Opacity="0.92"/>
-            </Border.Background>
+        <Border x:Name="CapsuleBorder" CornerRadius="12" MinWidth="160" MinHeight="40"
+                Padding="16,10" Background="{DynamicResource WhisperDesk.Brush.Surface}">
             <Border.Effect>
-                <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.4" Color="Black"/>
+                <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.12" Color="Black"/>
             </Border.Effect>
             <Border.BorderBrush>
-                <SolidColorBrush x:Name="BorderAccent" Color="#7C4DFF" Opacity="0.4"/>
+                <SolidColorBrush x:Name="BorderAccent" Color="{DynamicResource WhisperDesk.Color.Border}" Opacity="0.7"/>
             </Border.BorderBrush>
             <Border.BorderThickness>1</Border.BorderThickness>
 
             <Grid>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
 
-                    <!-- Waveform bars (Listening state) -->
-                    <!-- Fixed-height host so animating bar heights never resize the window -->
+                    <!-- Only render transforms change; audio updates never remeasure the capsule. -->
                     <StackPanel x:Name="WaveformPanel" Orientation="Horizontal" Height="28" VerticalAlignment="Center"
                                 Visibility="Collapsed" Margin="0,0,10,0">
-                        <Rectangle x:Name="WaveBar1" Width="3" Height="4" RadiusX="1.5" RadiusY="1.5"
-                                   Fill="#B388FF" Margin="1,0" VerticalAlignment="Center"/>
-                        <Rectangle x:Name="WaveBar2" Width="3" Height="6" RadiusX="1.5" RadiusY="1.5"
-                                   Fill="#9C64FF" Margin="1,0" VerticalAlignment="Center"/>
-                        <Rectangle x:Name="WaveBar3" Width="3" Height="8" RadiusX="1.5" RadiusY="1.5"
-                                   Fill="#7C4DFF" Margin="1,0" VerticalAlignment="Center"/>
-                        <Rectangle x:Name="WaveBar4" Width="3" Height="6" RadiusX="1.5" RadiusY="1.5"
-                                   Fill="#9C64FF" Margin="1,0" VerticalAlignment="Center"/>
-                        <Rectangle x:Name="WaveBar5" Width="3" Height="4" RadiusX="1.5" RadiusY="1.5"
-                                   Fill="#B388FF" Margin="1,0" VerticalAlignment="Center"/>
+                        <Rectangle Width="3" Height="26" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,0.5"
+                                   Fill="{DynamicResource WhisperDesk.Brush.Danger}" Opacity="0.55" Margin="1,0">
+                            <Rectangle.RenderTransform><ScaleTransform x:Name="WaveScale1" ScaleY="{x:Static models:AudioWaveform.MinimumScale}"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle Width="3" Height="26" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,0.5"
+                                   Fill="{DynamicResource WhisperDesk.Brush.Danger}" Opacity="0.8" Margin="1,0">
+                            <Rectangle.RenderTransform><ScaleTransform x:Name="WaveScale2" ScaleY="{x:Static models:AudioWaveform.MinimumScale}"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle Width="3" Height="26" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,0.5"
+                                   Fill="{DynamicResource WhisperDesk.Brush.Danger}" Margin="1,0">
+                            <Rectangle.RenderTransform><ScaleTransform x:Name="WaveScale3" ScaleY="{x:Static models:AudioWaveform.MinimumScale}"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle Width="3" Height="26" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,0.5"
+                                   Fill="{DynamicResource WhisperDesk.Brush.Danger}" Opacity="0.8" Margin="1,0">
+                            <Rectangle.RenderTransform><ScaleTransform x:Name="WaveScale4" ScaleY="{x:Static models:AudioWaveform.MinimumScale}"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle Width="3" Height="26" RadiusX="1.5" RadiusY="1.5" RenderTransformOrigin="0.5,0.5"
+                                   Fill="{DynamicResource WhisperDesk.Brush.Danger}" Opacity="0.55" Margin="1,0">
+                            <Rectangle.RenderTransform><ScaleTransform x:Name="WaveScale5" ScaleY="{x:Static models:AudioWaveform.MinimumScale}"/></Rectangle.RenderTransform>
+                        </Rectangle>
                     </StackPanel>
 
                     <!-- Spinner (Transcribing/Cleaning state) -->
@@ -145,40 +102,40 @@
                             <RotateTransform x:Name="SpinnerRotation" CenterX="10" CenterY="10"/>
                         </Canvas.RenderTransform>
                         <Ellipse Width="4" Height="4" Canvas.Left="8" Canvas.Top="0">
-                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot1" Color="#7C4DFF"/></Ellipse.Fill>
+                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot1" Color="{DynamicResource WhisperDesk.Color.Accent}"/></Ellipse.Fill>
                         </Ellipse>
                         <Ellipse Width="3.5" Height="3.5" Canvas.Left="15" Canvas.Top="3" Opacity="0.7">
-                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot2" Color="#7C4DFF"/></Ellipse.Fill>
+                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot2" Color="{DynamicResource WhisperDesk.Color.Accent}"/></Ellipse.Fill>
                         </Ellipse>
                         <Ellipse Width="3" Height="3" Canvas.Left="16.5" Canvas.Top="9" Opacity="0.4">
-                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot3" Color="#7C4DFF"/></Ellipse.Fill>
+                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot3" Color="{DynamicResource WhisperDesk.Color.Accent}"/></Ellipse.Fill>
                         </Ellipse>
                         <Ellipse Width="2.5" Height="2.5" Canvas.Left="14" Canvas.Top="15" Opacity="0.2">
-                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot4" Color="#7C4DFF"/></Ellipse.Fill>
+                            <Ellipse.Fill><SolidColorBrush x:Name="SpinDot4" Color="{DynamicResource WhisperDesk.Color.Accent}"/></Ellipse.Fill>
                         </Ellipse>
                     </Canvas>
 
                     <!-- Check mark (Done state) -->
                     <TextBlock x:Name="CheckIcon" Text="✓" FontSize="16" FontWeight="Bold"
-                               Foreground="#69F0AE" VerticalAlignment="Center"
+                               Foreground="{DynamicResource WhisperDesk.Brush.Success}" VerticalAlignment="Center"
                                Visibility="Collapsed" Margin="0,0,8,0"/>
 
                     <!-- Error icon -->
                     <TextBlock x:Name="ErrorIcon" Text="✕" FontSize="16" FontWeight="Bold"
-                               Foreground="#FF5252" VerticalAlignment="Center"
+                               Foreground="{DynamicResource WhisperDesk.Brush.Danger}" VerticalAlignment="Center"
                                Visibility="Collapsed" Margin="0,0,8,0"/>
 
                     <!-- Status text -->
-                    <TextBlock x:Name="StatusText" Text="Listening..."
-                               Foreground="#E0E0E0" FontSize="13"
-                               FontFamily="Segoe UI" FontWeight="SemiBold"
+                    <TextBlock x:Name="StatusText" Text="正在录音"
+                               Foreground="{DynamicResource WhisperDesk.Brush.Text}" FontSize="14"
+                               FontWeight="Regular"
                                VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <Border x:Name="DraftProgressTrack" Height="2" CornerRadius="1" VerticalAlignment="Bottom"
-                        Margin="0,0,0,-4" Background="#33FFFFFF" Visibility="Collapsed">
+                        Margin="0,0,0,-5" Background="{DynamicResource WhisperDesk.Brush.AccentSubtle}" Visibility="Collapsed">
                     <Border x:Name="DraftProgressFill" CornerRadius="1" HorizontalAlignment="Stretch"
-                            RenderTransformOrigin="0,0.5" Background="#D8D9FF">
+                            RenderTransformOrigin="0,0.5" Background="{DynamicResource WhisperDesk.Brush.Accent}">
                         <Border.RenderTransform>
                             <ScaleTransform x:Name="DraftProgressScale" ScaleX="1" ScaleY="1"/>
                         </Border.RenderTransform>

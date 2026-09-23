@@ -11,6 +11,7 @@ service PipelineService {
   rpc GetState(GetStateRequest) returns (GetStateResponse);
   rpc GetRecordingWav(GetRecordingWavRequest) returns (GetRecordingWavResponse);
   rpc Subscribe(SubscribeRequest) returns (stream PipelineEvent);
+  rpc SubscribeAudioLevel(SubscribeRequest) returns (stream AudioLevelEvent);
   rpc SendCommandResult(SendCommandResultRequest) returns (SendCommandResultResponse);
 }
 
@@ -100,6 +101,10 @@ message PipelineEvent {
 
 message StateChangedEvent {
   PipelineStateDto state = 1;
+}
+
+message AudioLevelEvent {
+  float level = 1;
 }
 
 message PartialTranscriptEvent {

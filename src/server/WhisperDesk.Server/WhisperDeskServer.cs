@@ -71,6 +71,8 @@ public class WhisperDeskServer : IDisposable
             b.AddProvider(new WhisperDesk.Logging.FileLoggerProvider(
                 WhisperDesk.Logging.FileLoggerProvider.GetLogPath("server")));
             b.SetMinimumLevel(LogLevel.Debug);
+            b.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+            b.AddFilter("Grpc.AspNetCore", LogLevel.Warning);
         });
 
         builder.Services.AddSttProvider(pipelineConfig.SttProvider, config);
