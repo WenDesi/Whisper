@@ -108,6 +108,8 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <ToggleButton x:Name="HeaderButton" Grid.Row="0" MinHeight="36"
+                                      Style="{x:Null}" HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Stretch" Padding="0"
                                       Content="{TemplateBinding Header}"
                                       ContentTemplate="{TemplateBinding HeaderTemplate}"
                                       FontFamily="{TemplateBinding FontFamily}"
