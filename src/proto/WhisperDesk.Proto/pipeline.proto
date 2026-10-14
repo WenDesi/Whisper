@@ -23,6 +23,13 @@ message StartSessionRequest {
   string selected = 4;
   SessionModeDto mode = 5;
   string draft_text = 6;
+  string original_draft_text = 7;
+  repeated DraftCorrectionTurnDto draft_corrections = 8;
+}
+message DraftCorrectionTurnDto {
+  string raw_instruction = 1;
+  string output = 2;
+  string timestamp = 3;
 }
 message StopSessionRequest {
   SessionModeDto mode = 1;

@@ -45,15 +45,26 @@ public class GrpcPipelineClient : IPipelineController, IAsyncDisposable
 
     public async Task StartSessionAsync(WindowTextSerializationInfo? textContext = null, SessionMode mode = SessionMode.Transcribe, CancellationToken ct = default)
     {
-        await _client.StartSessionAsync(new StartSessionRequest
+        var request = new StartSessionRequest
         {
             ForegroundProcess = "",
             ForegroundWindowTitle = textContext?.MainWindowTitle ?? "",
             FileFullPath = textContext?.FileFullPath ?? "",
             Selected = textContext?.Selected ?? "",
             Mode = MapMode(mode),
-            DraftText = textContext?.DraftText ?? ""
-        }, cancellationToken: ct);
+            DraftText = textContext?.DraftText ?? "",
+            OriginalDraftText = textContext?.OriginalDraftText ?? ""
+        };
+        if (textContext is not null)
+        {
+            request.DraftCorrections.AddRange(textContext.DraftCorrections.Select(turn => new DraftCorrectionTurnDto
+            {
+                RawInstruction = turn.RawInstruction,
+                Output = turn.Output,
+                Timestamp = turn.Timestamp.ToString("O", System.Globalization.CultureInfo.InvariantCulture)
+            }));
+        }
+        await _client.StartSessionAsync(request, cancellationToken: ct);
     }
 
     public async Task<PipelineResult?> StopSessionAsync(SessionMode? modeOverride = null, CancellationToken ct = default)

@@ -1,12 +1,12 @@
 # WhisperDesk
 
-实时语音转文字桌面应用，支持多家 STT 服务商，并可通过 LLM 对转写结果进行智能后处理。
+实时语音转文字桌面应用，支持多家 STT 服务商。普通听写直接输出识别结果，仅在语音纠正或显式语音指令时调用 LLM。
 
 ## 功能特性
 
 - **实时流式转写** — 麦克风音频实时捕获并流式推送至 STT 提供商，低延迟出字
 - **多 STT 提供商** — 内置 Azure Cognitive Services Speech、火山引擎（豆包）两套实现，按配置切换
-- **LLM 后处理** — 转写完成后可调用 Azure OpenAI 对文本进行清洗与润色
+- **多轮语音纠正** — 原稿、每轮原始纠正指令和对应输出组成完整时间线，交给推理模型执行局部纠错
 - **全局快捷键** — 系统级热键，无论焦点在哪都能一键开始/停止录音
 - **悬浮窗** — 小型浮层实时显示转写状态，不打断当前工作窗口
 - **系统托盘** — 最小化至任务栏，常驻后台
@@ -14,9 +14,9 @@
 
 ## 界面与操作
 
-界面采用雾白与岩蓝配色，整理后的文字是主内容；“查看原文”与正文对齐，默认无灰底，悬停时轻微高亮，展开后直接显示可选择、可复制的原文，不再嵌套卡片。也可用“复制文字”手动复制整理结果。麦克风设置位于右上角。
+界面采用雾白与岩蓝配色，转写文字是主内容；“查看原文”与正文对齐，默认无灰底，悬停时轻微高亮，展开后显示最初的识别原文，纠正后也不会被纠正指令覆盖。也可用“复制文字”手动复制当前结果。麦克风设置位于右上角。
 
-默认按住 `RightAlt` 说话，松开后整理并预览，再自动输入；`RightAlt+Shift` 仍用于语音指令。主窗口也可通过“开始录音 / 结束录音”按钮操作，处理期间按钮显示当前阶段。最小化后保留原有悬浮麦克风、预览纠正和托盘工作流。
+默认按住 `RightAlt` 说话，松开后直接预览 STT 原文，再自动输入，不做 LLM 清理。预览期间短按 `RightAlt` 确认，长按开始纠正；`RightAlt+Shift` 仍用于语音指令。主窗口也可通过“开始录音 / 结束录音”按钮操作，处理期间按钮显示当前阶段。最小化后保留原有悬浮麦克风和托盘工作流。
 
 主窗口、录音浮层和结果气泡共享 `src/ui/WhisperDesk/Themes/LightTheme.xaml` 中的颜色、字体与控件样式；录音和错误使用独立的语义色，不仅依靠颜色提示状态。
 
@@ -26,7 +26,9 @@
 
 录音浮层的五条波动显示实际麦克风音量的短时变化，不再播放循环动画。PCM 音量在采集线程计算，经独立的 gRPC 流传递最新值，UI 每 50 ms 读取一次；慢速连接或忙碌的界面不会积压旧音量。停止录音或音频中断后音量归零，波动使用绘制缩放而非反复调整布局。复制文字、上下文读取和日志写盘也在后台执行，UI 只接收状态并绘制。
 
-文字整理把口述作为独立的转写数据处理，只清理口癖、语法和标点。例如“你再 review 这个”应保留为这句话，而不是回答、执行 review 或索要原文；真正的语音指令仍由独立的指令阶段处理。
+普通听写不触发 LLM 清理、预热或后台自动热词学习；本地已有热词仍作为 STT 提示使用。纠正指令也不先清理，保留错识别词、语气、重复和逐字母拼写。每份草稿独立保存原稿及所有已完成的纠正轮次，确认输入或开始新草稿后不再沿用上一份历史。
+
+纠正 prompt 独立于通用指令 prompt，以 `<原始内容>`、`<当前草稿>`、`<纠正历史>` 和 `<当前纠正>` 分隔数据；历史中的每个 `<纠正轮次>` 标注顺序和时间，包含 `<纠正的原始文字>` 与 `<纠正后的输出>`。文本内的标签字符会转义，历史不做摘要或截断。模型会结合完整时间线定位术语、撤销前轮误改，同时保留其他成功的修改；网络错误或空输出会显示错误并保留草稿，不把纠正指令当作结果输入。
 
 ## 技术栈
 
@@ -38,7 +40,7 @@
 | 音频采集 | NAudio (WASAPI) |
 | STT — Azure | Microsoft.CognitiveServices.Speech v1.42 |
 | STT — 火山引擎 | 自定义 WebSocket 协议集成 |
-| LLM | OpenAI SDK v2.2 (Azure OpenAI endpoint) |
+| LLM | OpenAI SDK，支持 OpenAI/Azure 与火山方舟 Plan；仅供纠正和显式指令使用 |
 | 全局热键 | H.Hooks |
 | 系统托盘 | Hardcodet.NotifyIcon.Wpf |
 | 测试 | xUnit + Moq |
@@ -118,28 +120,31 @@ dotnet publish -c Release
 
 ### 配置
 
-在 `appsettings.json`（或用户机密 / 环境变量）中填入服务商信息：
+在应用目录的 `appsettings.json` 中配置，开发机可使用已被 Git 忽略的 `appsettings.Development.json` 覆盖。示例：
 
 ```json
 {
-  "Pipeline": {
-    "SttProvider": "Azure",
-    "LlmProvider": "AzureOpenAI",
-    "Languages": ["zh-CN", "en-US"]
+  "Transcription": {
+    "SpeechProvider": "Volcengine",
+    "CleanupProvider": "Doubao",
+    "Language": "zh"
   },
-  "AzureStt": {
-    "SubscriptionKey": "<your-key>",
-    "Region": "<your-region>"
+  "VolcengineSpeech": {
+    "ApiKey": "<your-speech-key>",
+    "ResourceId": "volc.seedasr.sauc.duration"
   },
-  "AzureOpenAI": {
-    "Endpoint": "https://<your-resource>.openai.azure.com/",
-    "ApiKey": "<your-key>",
-    "DeploymentName": "<your-deployment>"
+  "Doubao": {
+    "Endpoint": "https://ark.cn-beijing.volces.com/api/plan/v3",
+    "ApiKey": "<your-plan-key>",
+    "Model": "doubao-seed-2.1-pro",
+    "EnableThinking": true
   }
 }
 ```
 
-将 `SttProvider` 设置为 `"Volcengine"` 并填入 `VolcengineStt` 节点即可切换到火山引擎。不需要 LLM 后处理时将 `LlmProvider` 留空即可。
+`CleanupProvider` 为兼容现有配置保留的字段名，现在只选择纠正/指令模型，不再启用日常文字清理；旧的 `Pipeline:EnableTextCleanup` 设置不再生效。
+
+默认纠正模型为 `doubao-seed-2.1-pro`，`EnableThinking: true` 发送 `thinking.type=enabled`。该模型于 2026-10-14 在当前 Plan 实测可用，并返回推理内容；UI 只取最终文字，不显示或输入推理过程。推理可能比原 mini 模型慢，但只影响主动纠正，不影响普通听写。保留 `/api/plan/v3`，不要改成另计费的 `/api/v3`；后续模型可用性以自己的 Plan 控制台为准。
 
 ## 扩展新提供商
 

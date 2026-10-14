@@ -83,7 +83,7 @@
                 </Grid.RowDefinitions>
                 <TextBox x:Name="ResultTextBox" Grid.Row="0"
                          Style="{StaticResource WhisperDesk.TranscriptTextBox}"
-                         AutomationProperties.Name="整理后的文字"
+                         AutomationProperties.Name="转写文字"
                          Text="{Binding CleanedText, Mode=OneWay}"
                          Visibility="{Binding HasCleanedText, Converter={StaticResource BoolToVis}}" />
                 <StackPanel Grid.Row="0" VerticalAlignment="Center" Margin="12">
@@ -114,7 +114,7 @@
                                         <Setter Property="Text" Value="正在把声音变成文字…" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Cleaning}">
-                                        <Setter Property="Text" Value="正在整理这段文字…" />
+                                        <Setter Property="Text" Value="正在处理语音指令…" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Error}">
                                         <Setter Property="Text" Value="这次处理未完成，请查看下方提示。" />
@@ -123,13 +123,13 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
-                    <TextBlock Text="按住快捷键说话，松开后自动整理。" FontSize="12"
+                    <TextBlock Text="按住快捷键说话，松开后预览文字。" FontSize="12"
                                Foreground="{DynamicResource WhisperDesk.Brush.SecondaryText}"
                                TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0" />
                 </StackPanel>
                 <Button Grid.Row="1" Style="{StaticResource WhisperDesk.QuietButton}"
                         HorizontalAlignment="Right" Margin="0,8,-10,0"
-                        AutomationProperties.Name="复制文字" ToolTip="复制整理后的文字"
+                        AutomationProperties.Name="复制文字" ToolTip="复制转写文字"
                         Command="{Binding CopyToClipboardCommand}"
                         Visibility="{Binding HasCleanedText, Converter={StaticResource BoolToVis}}">
                     <StackPanel Orientation="Horizontal">
@@ -240,7 +240,7 @@
                                                 <Setter Property="Text" Value="正在转写" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding Status}" Value="{x:Static models:AppStatus.Cleaning}">
-                                                <Setter Property="Text" Value="正在整理" />
+                                                <Setter Property="Text" Value="正在处理" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>

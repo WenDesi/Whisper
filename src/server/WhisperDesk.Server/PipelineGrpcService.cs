@@ -23,6 +23,13 @@ public class PipelineGrpcService : PipelineService.PipelineServiceBase
             Selected = request.Selected,
             FileFullPath = request.FileFullPath,
             DraftText = request.DraftText,
+            OriginalDraftText = request.OriginalDraftText,
+            DraftCorrections = request.DraftCorrections.Select(turn => new DraftCorrectionTurn
+            {
+                RawInstruction = turn.RawInstruction,
+                Output = turn.Output,
+                Timestamp = DateTimeOffset.ParseExact(turn.Timestamp, "O", System.Globalization.CultureInfo.InvariantCulture)
+            }).ToArray(),
             MainWindowTitle = request.ForegroundWindowTitle
         }, MapMode(request.Mode), context.CancellationToken);
         return new StartSessionResponse();

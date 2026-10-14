@@ -34,10 +34,6 @@ public static class PipelineServiceRegistration
         }
 
         // Post-processing stages
-        if (pipelineConfig.EnableTextCleanup)
-        {
-            services.AddSingleton<IPostProcessingStage, LlmTextCleanupStage>();
-        }
         services.AddSingleton<IPostProcessingStage, LlmCommandStage>();
 
         // Local tools (executed in-process, not routed through UI)

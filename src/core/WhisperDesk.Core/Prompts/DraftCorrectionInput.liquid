@@ -1,0 +1,15 @@
+<纠正请求>
+<原始内容>{{ original_text }}</原始内容>
+<当前草稿>{{ current_draft }}</当前草稿>
+<纠正历史>
+{% for turn in turns %}
+<纠正轮次 序号="{{ forloop.index }}" 时间="{{ turn.timestamp }}">
+<纠正的原始文字>{{ turn.raw_instruction }}</纠正的原始文字>
+<纠正后的输出>{{ turn.output }}</纠正后的输出>
+</纠正轮次>
+{% endfor %}
+</纠正历史>
+<当前纠正 序号="{{ current_round }}" 时间="{{ current_timestamp }}">
+<纠正的原始文字>{{ instruction }}</纠正的原始文字>
+</当前纠正>
+</纠正请求>
