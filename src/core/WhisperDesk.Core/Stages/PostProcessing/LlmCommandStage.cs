@@ -1,4 +1,6 @@
 using Fluid;
+using System.Globalization;
+using System.Security;
 using Microsoft.Extensions.Logging;
 using WhisperDesk.Core.Contract;
 using WhisperDesk.Core.Pipeline;
@@ -18,6 +20,12 @@ public class LlmCommandStage : IPostProcessingStage
 
     private static readonly IFluidTemplate SystemPromptTemplate =
         PromptTemplateLoader.Load(typeof(LlmCommandStage).Assembly, "Command.liquid");
+    private static readonly IFluidTemplate CommandInputTemplate =
+        PromptTemplateLoader.Load(typeof(LlmCommandStage).Assembly, "CommandInput.liquid");
+    private static readonly IFluidTemplate CorrectionPromptTemplate =
+        PromptTemplateLoader.Load(typeof(LlmCommandStage).Assembly, "DraftCorrection.liquid");
+    private static readonly IFluidTemplate CorrectionInputTemplate =
+        PromptTemplateLoader.Load(typeof(LlmCommandStage).Assembly, "DraftCorrectionInput.liquid");
 
     private readonly ILogger<LlmCommandStage> _logger;
     private readonly ILlmProvider _llmProvider;
@@ -25,22 +33,6 @@ public class LlmCommandStage : IPostProcessingStage
     public string Name => "LLM Command";
     public int Order => 200;
     public IReadOnlySet<SessionMode> AppliesTo => AppliesToSet;
-
-    private const string UserPromptTemplate = """
-        Here is the selected text:
-        {0}
-
-        User instruction:
-        {1}
-        """;
-
-    private const string DraftUserPromptTemplate = """
-        Here is the draft text:
-        <draft-text>{0}</draft-text>
-
-        User instruction:
-        <user-instruction>{1}</user-instruction>
-        """;
 
     public LlmCommandStage(ILogger<LlmCommandStage> logger, ILlmProvider llmProvider)
     {
@@ -50,62 +42,70 @@ public class LlmCommandStage : IPostProcessingStage
 
     public async Task<string> ProcessAsync(string text, PostProcessingContext context, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        var instruction = context.RawTranscript;
+        if (string.IsNullOrWhiteSpace(instruction))
         {
             _logger.LogInformation("[LlmCommand] Empty transcript; skipping LLM command.");
             return text;
         }
 
         var toolContext = context.ToolContext;
-        if (string.IsNullOrWhiteSpace(toolContext.MainWindowTitle))
+        var isDraftMode = !string.IsNullOrWhiteSpace(toolContext.DraftText);
+        if (!isDraftMode && string.IsNullOrWhiteSpace(toolContext.MainWindowTitle))
         {
             _logger.LogWarning("[LlmCommand] No valid window title in context. Skipping LLM command.");
             return text;
         }
 
-        var systemPrompt = await SystemPromptTemplate.RenderAsync(new TemplateContext());
-
-        var isDraftMode = !string.IsNullOrWhiteSpace(toolContext.DraftText);
-        var userPrompt = isDraftMode
-            ? string.Format(DraftUserPromptTemplate, toolContext.DraftText, text)
-            : BuildNormalUserPrompt(toolContext.SelectedText, text);
+        var input = new TemplateContext();
+        input.SetValue("instruction", Escape(instruction));
+        string systemPrompt;
+        string userPrompt;
+        if (isDraftMode)
+        {
+            input.SetValue("original_text", Escape(string.IsNullOrEmpty(context.OriginalDraftText)
+                ? toolContext.DraftText : context.OriginalDraftText));
+            input.SetValue("current_draft", Escape(toolContext.DraftText));
+            input.SetValue("turns", context.DraftCorrections.Select(turn => new Dictionary<string, string>
+            {
+                ["timestamp"] = turn.Timestamp.ToString("O", CultureInfo.InvariantCulture),
+                ["raw_instruction"] = Escape(turn.RawInstruction),
+                ["output"] = Escape(turn.Output)
+            }).ToArray());
+            input.SetValue("current_round", context.DraftCorrections.Count + 1);
+            input.SetValue("current_timestamp", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+            systemPrompt = await CorrectionPromptTemplate.RenderAsync(new TemplateContext());
+            userPrompt = await CorrectionInputTemplate.RenderAsync(input);
+        }
+        else
+        {
+            input.SetValue("selected_text", Escape(toolContext.SelectedText));
+            systemPrompt = await SystemPromptTemplate.RenderAsync(new TemplateContext());
+            userPrompt = await CommandInputTemplate.RenderAsync(input);
+        }
 
         var toolNames = string.Join(", ", toolContext.Tools.Select(t => t.Name));
         _logger.LogDebug("[LlmCommand] Sending command to LLM. SystemPrompt={SystemPrompt}, UserPrompt={UserPrompt}, Tools={Tools}",
             systemPrompt, userPrompt, toolNames);
 
-        string result;
-        try
-        {
-            result = await _llmProvider.ProcessCommandAsync(
+        var result = isDraftMode
+            ? await _llmProvider.ProcessTextAsync(systemPrompt, userPrompt,
+                new LlmRequestOptions { Temperature = 0 }, ct)
+            : await _llmProvider.ProcessCommandAsync(
                 systemPrompt,
                 userPrompt,
                 toolContext,
                 new LlmRequestOptions { Temperature = 0.5f },
                 ct);
-        }
-        catch (Exception ex) when (isDraftMode)
-        {
-            _logger.LogWarning(ex, "[LlmCommand] Draft correction failed; keeping original draft.");
-            return toolContext.DraftText;
-        }
 
         if (isDraftMode && string.IsNullOrWhiteSpace(result))
         {
-            _logger.LogWarning("[LlmCommand] Draft correction returned empty text; keeping original draft.");
-            return toolContext.DraftText;
+            throw new InvalidOperationException("纠正模型未返回文字，原草稿未修改。");
         }
 
         _logger.LogInformation("[LlmCommand] Done: {InLen} -> {OutLen} chars.", text.Length, result.Length);
         return result;
     }
 
-    private static string BuildNormalUserPrompt(string selected, string instruction)
-    {
-        var selectedInner = string.IsNullOrWhiteSpace(selected)
-            ? "No text was selected. Apply the command to the entire transcript."
-            : selected;
-        var selectedText = $"<selected-text>{selectedInner}</selected-text>";
-        return string.Format(UserPromptTemplate, selectedText, $"<user-instruction>{instruction}</user-instruction>");
-    }
+    private static string Escape(string text) => SecurityElement.Escape(text) ?? string.Empty;
 }

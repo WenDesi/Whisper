@@ -20,9 +20,6 @@ public class PipelineConfig
     /// <summary>Path to hot words JSON file (relative to exe directory).</summary>
     public string HotWordsFile { get; set; } = "hotwords.json";
 
-    /// <summary>Enable LLM text cleanup post-processing.</summary>
-    public bool EnableTextCleanup { get; set; } = true;
-
     /// <summary>WASAPI device ID for microphone selection. Empty string = system default.</summary>
     public string AudioDeviceId { get; set; } = "";
 

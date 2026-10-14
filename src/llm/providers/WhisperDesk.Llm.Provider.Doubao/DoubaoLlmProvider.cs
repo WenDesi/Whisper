@@ -67,7 +67,9 @@ public class DoubaoLlmProvider : ILlmProvider
         var chatOptions = BuildChatOptions(options);
 
         var response = await _client.CompleteChatAsync(messages, chatOptions, ct);
-        var result = response.Value.Content[0].Text;
+        if (response.Value.FinishReason == ChatFinishReason.Length)
+            throw new InvalidOperationException("模型输出达到长度限制，未应用不完整的纠正。");
+        var result = string.Concat(response.Value.Content.Select(part => part.Text));
 
         _logger.LogInformation("[Doubao] Response: {InLen} -> {OutLen} chars.",
             userText.Length, result.Length);
@@ -185,10 +187,7 @@ public class DoubaoLlmProvider : ILlmProvider
             clientOptions.Endpoint = new Uri(_config.Endpoint);
         }
 
-        // Doubao/Ark defaults to "thinking" mode, which adds 3-5s of first-token latency.
-        // Cleanup is a trivial task that needs no reasoning, so disable it via a body-injection
-        // policy (the OpenAI SDK has no strongly-typed field for this Ark-specific param).
-        clientOptions.AddPolicy(new ThinkingDisabledPolicy(), PipelinePosition.PerCall);
+        clientOptions.AddPolicy(new ThinkingPolicy(_config.EnableThinking), PipelinePosition.PerCall);
 
         var apiKey = string.IsNullOrEmpty(_config.ApiKey) ? "no-key" : _config.ApiKey;
 
@@ -199,10 +198,9 @@ public class DoubaoLlmProvider : ILlmProvider
     }
 
     /// <summary>
-    /// Injects <c>"thinking": { "type": "disabled" }</c> into every chat request body so the
-    /// Doubao model skips its reasoning phase and starts emitting output immediately.
+    /// Configures Ark reasoning without mixing reasoning_content into the text returned to the UI.
     /// </summary>
-    private sealed class ThinkingDisabledPolicy : PipelinePolicy
+    private sealed class ThinkingPolicy(bool enabled) : PipelinePolicy
     {
         public override void Process(PipelineMessage message, IReadOnlyList<PipelinePolicy> pipeline, int index)
         {
@@ -216,7 +214,7 @@ public class DoubaoLlmProvider : ILlmProvider
             await ProcessNextAsync(message, pipeline, index);
         }
 
-        private static void Inject(PipelineMessage message)
+        private void Inject(PipelineMessage message)
         {
             if (message.Request?.Content is null) return;
 
@@ -226,7 +224,7 @@ public class DoubaoLlmProvider : ILlmProvider
 
             if (JsonNode.Parse(stream) is not JsonObject body) return;
 
-            body["thinking"] = new JsonObject { ["type"] = "disabled" };
+            body["thinking"] = new JsonObject { ["type"] = enabled ? "enabled" : "disabled" };
             message.Request.Content = BinaryContent.Create(BinaryData.FromString(body.ToJsonString()));
         }
     }

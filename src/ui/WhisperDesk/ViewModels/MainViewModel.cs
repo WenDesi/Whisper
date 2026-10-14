@@ -78,8 +78,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public sealed record DraftPreview(string Text, TimeSpan CommitDelay);
 
-    private sealed record PendingDraft(string Text, WindowTextContext Context, TimeSpan CommitDelay);
-
     public MainViewModel(
         ILogger<MainViewModel> logger,
         IPipelineController pipeline,
@@ -183,9 +181,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnSessionCompleted(object? sender, PipelineResult result)
     {
+        string originalText;
+        lock (_draftLock)
+        {
+            originalText = result.Mode == SessionMode.Instruct && _pendingDraft is not null
+                ? _pendingDraft.OriginalText
+                : result.RawTranscript;
+        }
         Application.Current?.Dispatcher.InvokeAsync(() =>
         {
-            RawText = result.RawTranscript;
+            RawText = originalText;
             CleanedText = result.ProcessedText;
             PartialText = string.Empty;
 
@@ -199,7 +204,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else if (result.Mode == SessionMode.Instruct && !string.IsNullOrWhiteSpace(result.ProcessedText))
         {
-            UpdatePendingDraft(result.ProcessedText);
+            UpdatePendingDraft(result);
         }
         else if (result.Mode == SessionMode.Instruct)
         {
@@ -451,7 +456,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var commitDelay = GetDraftCommitDelay(text);
         lock (_draftLock)
         {
-            _pendingDraft = new PendingDraft(text, context, commitDelay);
+            _pendingDraft = new PendingDraft(text, text, context, commitDelay, []);
         }
 
         _logger.LogInformation("[Draft] Queued transcription draft ({Length} chars) for {DelayMs} ms.",
@@ -479,19 +484,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
 
             CancelDraftCommitTimerCore();
-            draftContext = _pendingDraft.Context with
-            {
-                Selected = string.Empty,
-                DraftText = _pendingDraft.Text
-            };
+            draftContext = _pendingDraft.CreateCorrectionContext();
             _logger.LogInformation("[Draft] Starting command correction for pending draft ({Length} chars).",
                 _pendingDraft.Text.Length);
             return true;
         }
     }
 
-    private void UpdatePendingDraft(string text)
+    private void UpdatePendingDraft(PipelineResult result)
     {
+        var text = result.ProcessedText;
         var commitDelay = GetDraftCommitDelay(text);
         lock (_draftLock)
         {
@@ -500,7 +502,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            _pendingDraft = _pendingDraft with { Text = text, CommitDelay = commitDelay };
+            _pendingDraft = _pendingDraft.ApplyCorrection(result, commitDelay);
             _logger.LogInformation("[Draft] Updated pending draft ({Length} chars).", text.Length);
             DraftPreviewChanged?.Invoke(this, new DraftPreview(text, commitDelay));
         }

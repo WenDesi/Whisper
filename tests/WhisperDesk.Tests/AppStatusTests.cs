@@ -9,7 +9,7 @@ public class AppStatusTests
     [InlineData(AppStatus.Idle, "准备就绪")]
     [InlineData(AppStatus.Listening, "正在录音")]
     [InlineData(AppStatus.Transcribing, "正在转写")]
-    [InlineData(AppStatus.Cleaning, "正在整理")]
+    [InlineData(AppStatus.Cleaning, "正在处理指令")]
     [InlineData(AppStatus.Ready, "文字已就绪")]
     [InlineData(AppStatus.Error, "处理未完成")]
     public void ToDisplayString_ReturnsExpectedText(AppStatus status, string expected)

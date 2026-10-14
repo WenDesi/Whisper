@@ -111,10 +111,6 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 _foregroundWindowTitle = textContext?.MainWindowTitle ?? "";
                 _sessionMode = mode;
 
-                // Warm up the LLM connection now (fire-and-forget). By the time STT finishes and
-                // cleanup runs, DNS/TCP/TLS is established, cutting first-token latency.
-                _ = _llmProvider.WarmUpAsync(ct);
-
                 var audioFormat = new AudioFormat
                 {
                     SampleRate = _config.Audio.SampleRate,
@@ -218,10 +214,14 @@ public class StreamingPipeline : IPipelineController, IDisposable
             _logger.LogInformation("[Pipeline] Raw transcript ({Length} chars): {Text}",
                 rawTranscript.Length, rawTranscript);
 
-            // 4. Run post-processing stages
-            State = PipelineState.PostProcessing;
+            // Dictation is the exact STT result; only explicit instructions invoke an LLM.
             var postStart = sw.ElapsedMilliseconds;
-            var processedText = await RunPostProcessingAsync(rawTranscript, ct);
+            var processedText = rawTranscript;
+            if (_sessionMode == SessionMode.Instruct)
+            {
+                State = PipelineState.PostProcessing;
+                processedText = await RunPostProcessingAsync(rawTranscript, ct);
+            }
             var postMs = sw.ElapsedMilliseconds - postStart;
 
             _logger.LogInformation("[Pipeline] Processed text ({Length} chars): {Text}",
@@ -253,7 +253,7 @@ public class StreamingPipeline : IPipelineController, IDisposable
                 ProcessedText = result.ProcessedText,
                 Source = result.SourceFile ?? "microphone",
                 SttProvider = _config.SttProvider,
-                LlmProvider = _config.LlmProvider,
+                LlmProvider = _sessionMode == SessionMode.Instruct ? _config.LlmProvider : "",
                 ForegroundProcess = "",
                 ForegroundWindowTitle = _foregroundWindowTitle
             };
@@ -324,6 +324,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
         var context = new PostProcessingContext
         {
             RawTranscript = text,
+            OriginalDraftText = _sessionTextContext?.OriginalDraftText ?? "",
+            DraftCorrections = _sessionTextContext?.DraftCorrections ?? [],
             Language = _config.Language,
             PhraseHints = _contextBuilder?.PhraseHints ?? [],
             ToolContext = BuildToolContext(ct),
@@ -349,7 +351,8 @@ public class StreamingPipeline : IPipelineController, IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[Pipeline] Post-processing stage '{Name}' failed.", stage.Name);
-                // Continue with current text — don't fail the whole pipeline
+                // Never present a failed correction (or its spoken instruction) as an updated draft.
+                throw;
             }
         }
 

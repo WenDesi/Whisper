@@ -1,4 +1,5 @@
 using WhisperDesk.Llm.Contract;
+using WhisperDesk.Core.Contract;
 
 namespace WhisperDesk.Core.Pipeline;
 
@@ -10,6 +11,8 @@ public class PostProcessingContext
 {
     /// <summary>The raw transcript as returned by the STT provider (never modified).</summary>
     public required string RawTranscript { get; init; }
+    public string OriginalDraftText { get; init; } = string.Empty;
+    public IReadOnlyList<DraftCorrectionTurn> DraftCorrections { get; init; } = [];
 
     /// <summary>The language detected or configured for the session.</summary>
     public string? Language { get; init; }
