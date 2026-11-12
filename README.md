@@ -135,16 +135,23 @@ dotnet publish -c Release
   },
   "Doubao": {
     "Endpoint": "https://ark.cn-beijing.volces.com/api/plan/v3",
-    "ApiKey": "<your-plan-key>",
-    "Model": "doubao-seed-2.1-pro",
-    "EnableThinking": true
+    "ApiKey": "",
+    "Model": "deepseek-v4.1-flash",
+    "EnableThinking": true,
+    "ReasoningEffort": "low"
   }
 }
 ```
 
 `CleanupProvider` 为兼容现有配置保留的字段名，现在只选择纠正/指令模型，不再启用日常文字清理；旧的 `Pipeline:EnableTextCleanup` 设置不再生效。
 
-默认纠正模型为 `doubao-seed-2.1-pro`，`EnableThinking: true` 发送 `thinking.type=enabled`。该模型于 2026-10-14 在当前 Plan 实测可用，并返回推理内容；UI 只取最终文字，不显示或输入推理过程。推理可能比原 mini 模型慢，但只影响主动纠正，不影响普通听写。保留 `/api/plan/v3`，不要改成另计费的 `/api/v3`；后续模型可用性以自己的 Plan 控制台为准。
+`Doubao:ApiKey` 未设置或为空时，纠正/指令模型直接复用 `VolcengineSpeech:ApiKey`，无需重复填写密钥；显式设置 `Doubao:ApiKey` 时优先使用独立密钥。共用配置不代表语音密钥必然具备方舟套餐权限，仍需确认该密钥可用于配置的模型接口。
+
+默认纠正/指令模型为 `deepseek-v4.1-flash`（DeepSeek V4.1 Flash），复用 `Doubao` 配置和火山方舟兼容接口。`EnableThinking: true` 发送 `thinking.type=enabled`，`ReasoningEffort: "low"` 发送 `reasoning_effort=low`；关闭思考时不发送思考强度，设为 `null` 则使用服务端默认强度。根据[火山官方说明](https://ark.volcengine.com/region:cn-beijing/docs/deepseek-v4-1-flash)，`medium` 会映射为 `high`，因此默认选择 `low`。UI 只取最终文字，不显示或输入推理过程；普通听写不调用模型。
+
+保留现有套餐接口 `/api/plan/v3`，不要改成另计费的 `/api/v3`。套餐模型别名使用 `deepseek-v4.1-flash`，不同于按量 API 的版本 ID `deepseek-v4-1-flash-261017`；实际模型权限及套餐适用范围以自己的控制台为准，Coding Plan 仅适用于官方规定的 AI 编程工具场景，不应当作自定义应用的通用 API 套餐。已有 `appsettings.Development.json` 的 `Doubao` 配置会覆盖默认值，需要同步修改其中的模型和思考强度。
+
+仓库仅包含占位密钥，切换模型不能修复失效的凭据。出现鉴权错误时，应检查实际使用的 `VolcengineSpeech:ApiKey` 或显式配置的 `Doubao:ApiKey`（不要提交密钥），并核对密钥是否属于当前套餐、套餐有效期、剩余额度和模型权限；本次默认值更新不代表已用真实套餐验证连通性。
 
 ## 扩展新提供商
 

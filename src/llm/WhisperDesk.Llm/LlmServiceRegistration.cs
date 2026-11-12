@@ -24,6 +24,8 @@ public static class LlmServiceRegistration
             case "doubao":
                 var doubaoConfig = new DoubaoLlmConfig();
                 configuration.GetSection("Doubao").Bind(doubaoConfig);
+                if (string.IsNullOrWhiteSpace(doubaoConfig.ApiKey))
+                    doubaoConfig.ApiKey = configuration["VolcengineSpeech:ApiKey"] ?? string.Empty;
                 services.AddSingleton(doubaoConfig);
                 services.AddSingleton<ILlmProvider, DoubaoLlmProvider>();
                 break;

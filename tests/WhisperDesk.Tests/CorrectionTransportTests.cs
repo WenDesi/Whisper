@@ -4,11 +4,13 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using WhisperDesk.Core.Contract;
+using WhisperDesk.Llm;
 using WhisperDesk.Llm.Provider.Doubao;
 using WhisperDesk.Server;
 using Xunit;
@@ -17,6 +19,27 @@ namespace WhisperDesk.Tests;
 
 public class CorrectionTransportTests
 {
+    [Theory]
+    [InlineData(null, "synthetic-speech-key")]
+    [InlineData("", "synthetic-speech-key")]
+    [InlineData("  ", "synthetic-speech-key")]
+    [InlineData("synthetic-plan-key", "synthetic-plan-key")]
+    public void DoubaoReusesSpeechKeyUnlessAnExplicitKeyIsConfigured(string? llmKey, string expectedKey)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Doubao:ApiKey"] = llmKey,
+                ["VolcengineSpeech:ApiKey"] = "synthetic-speech-key"
+            })
+            .Build();
+        using var services = new ServiceCollection()
+            .AddLlmProvider("Doubao", configuration)
+            .BuildServiceProvider();
+
+        Assert.Equal(expectedKey, services.GetRequiredService<DoubaoLlmConfig>().ApiKey);
+    }
+
     [Fact]
     public async Task GrpcPreservesTheOriginalAndFullOrderedTimeline()
     {
@@ -60,9 +83,11 @@ public class CorrectionTransportTests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task DoubaoSendsConfiguredThinkingAndReturnsOnlyFinalText(bool thinking)
+    [InlineData(true, "low")]
+    [InlineData(true, "high")]
+    [InlineData(true, null)]
+    [InlineData(false, "low")]
+    public async Task DoubaoSendsConfiguredThinkingAndReturnsOnlyFinalText(bool thinking, string? reasoningEffort)
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
@@ -77,7 +102,7 @@ public class CorrectionTransportTests
             return Results.Json(new
             {
                 id = "test-completion", @object = "chat.completion", created = 1720000000,
-                model = "doubao-seed-2.1-pro",
+                model = "deepseek-v4.1-flash",
                 choices = new[] { new
                 {
                     index = 0, finish_reason = "stop",
@@ -88,14 +113,19 @@ public class CorrectionTransportTests
         await app.StartAsync();
         var provider = new DoubaoLlmProvider(NullLogger<DoubaoLlmProvider>.Instance, new DoubaoLlmConfig
         {
-            Endpoint = app.Urls.Single(), ApiKey = "synthetic-test-key", EnableThinking = thinking
+            Endpoint = app.Urls.Single(), ApiKey = "synthetic-test-key",
+            EnableThinking = thinking, ReasoningEffort = reasoningEffort
         });
 
         var output = await provider.ProcessTextAsync("test", "test");
 
         Assert.Equal("Core item", output);
-        Assert.Equal("doubao-seed-2.1-pro", request.GetProperty("model").GetString());
+        Assert.Equal("deepseek-v4.1-flash", request.GetProperty("model").GetString());
         Assert.Equal(thinking ? "enabled" : "disabled",
             request.GetProperty("thinking").GetProperty("type").GetString());
+        if (thinking && reasoningEffort is not null)
+            Assert.Equal(reasoningEffort, request.GetProperty("reasoning_effort").GetString());
+        else
+            Assert.False(request.TryGetProperty("reasoning_effort", out _));
     }
 }
