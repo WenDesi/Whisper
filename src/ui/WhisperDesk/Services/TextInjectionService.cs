@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Extensions.Logging;
@@ -34,8 +36,11 @@ public sealed partial class TextInjectionService
     private const int RemoteClipboardPropagationDelayMs = 200;
     private const int RemoteMenuDismissDelayMs = 30;
     private const int RemotePasteCompletionDelayMs = 200;
+    private const int TypingBatchSize = 2;
+    private const int TypingIntervalMs = 10;
 
     private readonly ILogger<TextInjectionService> _logger;
+    private readonly object _injectionLock = new();
 
     public TextInjectionService(ILogger<TextInjectionService> logger)
     {
@@ -44,8 +49,9 @@ public sealed partial class TextInjectionService
 
     /// <summary>
     /// Synchronously injects <paramref name="text"/> into the currently focused window.
-    /// Uses Unicode <c>SendInput</c> normally; switches to clipboard paste when the
-    /// foreground window is a Remote Desktop client. Safe to call from any thread.
+    /// Sends paced Unicode input normally; switches to clipboard paste when the
+    /// foreground window is a Remote Desktop client. Calls are serialized.
+    /// Call from a worker thread to avoid blocking the UI during typing.
     /// </summary>
     public void InjectText(string text)
     {
@@ -54,6 +60,14 @@ public sealed partial class TextInjectionService
             return;
         }
 
+        lock (_injectionLock)
+        {
+            InjectTextCore(text);
+        }
+    }
+
+    private void InjectTextCore(string text)
+    {
         if (IsForegroundRemoteDesktop())
         {
             _logger.LogInformation("[TextInjection] Remote Desktop foreground detected; using clipboard paste.");
@@ -61,8 +75,46 @@ public sealed partial class TextInjectionService
             return;
         }
 
-        // Two INPUT events per UTF-16 code unit: down then up.
-        // Surrogate pairs occupy two code units; Windows reassembles them.
+        var target = GetForegroundWindow();
+        SendPacedText(text, batch =>
+        {
+            if (target == IntPtr.Zero || GetForegroundWindow() != target)
+            {
+                throw new InvalidOperationException("The target window changed during text input.");
+            }
+
+            SendUnicodeBatch(batch.Span);
+        }, () => Thread.Sleep(TypingIntervalMs));
+        _logger.LogInformation("[TextInjection] Injected {Chars} chars with paced Unicode input.", text.Length);
+    }
+
+    internal static void SendPacedText(string text, Action<ReadOnlyMemory<char>> sendBatch, Action wait)
+    {
+        var elements = StringInfo.GetTextElementEnumerator(text);
+        var batchStart = 0;
+        var batchElements = 0;
+        while (elements.MoveNext())
+        {
+            if (batchElements == TypingBatchSize)
+            {
+                sendBatch(text.AsMemory(batchStart, elements.ElementIndex - batchStart));
+                wait();
+                batchStart = elements.ElementIndex;
+                batchElements = 0;
+            }
+
+            batchElements++;
+        }
+
+        if (batchElements > 0)
+        {
+            sendBatch(text.AsMemory(batchStart));
+        }
+    }
+
+    private static void SendUnicodeBatch(ReadOnlySpan<char> text)
+    {
+        // Keep each grapheme's UTF-16 units together in one SendInput call.
         var inputs = new INPUT[text.Length * 2];
         for (int i = 0; i < text.Length; i++)
         {
@@ -75,12 +127,8 @@ public sealed partial class TextInjectionService
         if (sent != inputs.Length)
         {
             var err = Marshal.GetLastWin32Error();
-            _logger.LogWarning("[TextInjection] SendInput sent {Sent}/{Expected}, lastError={Err}",
-                sent, inputs.Length, err);
-        }
-        else
-        {
-            _logger.LogInformation("[TextInjection] Injected {Chars} chars.", text.Length);
+            throw new Win32Exception(err,
+                $"SendInput sent {sent}/{inputs.Length} events; text input stopped.");
         }
     }
 
@@ -289,6 +337,9 @@ public sealed partial class TextInjectionService
 
     [LibraryImport("user32.dll", SetLastError = true)]
     private static partial uint SendInput(uint cInputs, [In] INPUT[] pInputs, int cbSize);
+
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr GetForegroundWindow();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
