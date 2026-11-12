@@ -4,6 +4,7 @@ public class DoubaoLlmConfig
 {
     public string Endpoint { get; set; } = "https://ark.cn-beijing.volces.com/api/plan/v3";
     public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = "doubao-seed-2.1-pro";
+    public string Model { get; set; } = "deepseek-v4.1-flash";
     public bool EnableThinking { get; set; } = true;
+    public string? ReasoningEffort { get; set; } = "low";
 }

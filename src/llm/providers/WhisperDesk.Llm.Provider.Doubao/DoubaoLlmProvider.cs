@@ -187,7 +187,7 @@ public class DoubaoLlmProvider : ILlmProvider
             clientOptions.Endpoint = new Uri(_config.Endpoint);
         }
 
-        clientOptions.AddPolicy(new ThinkingPolicy(_config.EnableThinking), PipelinePosition.PerCall);
+        clientOptions.AddPolicy(new ThinkingPolicy(_config.EnableThinking, _config.ReasoningEffort), PipelinePosition.PerCall);
 
         var apiKey = string.IsNullOrEmpty(_config.ApiKey) ? "no-key" : _config.ApiKey;
 
@@ -200,7 +200,7 @@ public class DoubaoLlmProvider : ILlmProvider
     /// <summary>
     /// Configures Ark reasoning without mixing reasoning_content into the text returned to the UI.
     /// </summary>
-    private sealed class ThinkingPolicy(bool enabled) : PipelinePolicy
+    private sealed class ThinkingPolicy(bool enabled, string? reasoningEffort) : PipelinePolicy
     {
         public override void Process(PipelineMessage message, IReadOnlyList<PipelinePolicy> pipeline, int index)
         {
@@ -225,6 +225,8 @@ public class DoubaoLlmProvider : ILlmProvider
             if (JsonNode.Parse(stream) is not JsonObject body) return;
 
             body["thinking"] = new JsonObject { ["type"] = enabled ? "enabled" : "disabled" };
+            if (enabled && !string.IsNullOrWhiteSpace(reasoningEffort))
+                body["reasoning_effort"] = reasoningEffort;
             message.Request.Content = BinaryContent.Create(BinaryData.FromString(body.ToJsonString()));
         }
     }
