@@ -18,6 +18,8 @@
 
 默认按住 `RightAlt` 说话，松开后直接预览 STT 原文，再自动输入，不做 LLM 清理。预览期间短按 `RightAlt` 确认，长按开始纠正；`RightAlt+Shift` 仍用于语音指令。主窗口也可通过“开始录音 / 结束录音”按钮操作，处理期间按钮显示当前阶段。最小化后保留原有悬浮麦克风和托盘工作流。
 
+预览确认后的普通输入采用快速打字机节奏：每批最多 2 个可见字符，批间等待 10 ms（实际速度受系统调度和目标软件影响），不再一次性发送整段文字的全部模拟按键。中文、emoji 和组合字符不会在批次边界拆开；输入在后台串行执行，切换前台窗口或发送失败时停止，并提示从主窗口复制完整内容。远程桌面仍使用原有剪贴板粘贴。实现机制参考 [OpenTypeless 的分批输入](https://github.com/tover0314-w/opentypeless/blob/f5ad60298f535e0fff716a749802138ee409dea7/src-tauri/src/output/keyboard.rs)和 [pywinauto 的逐键间隔](https://github.com/pywinauto/pywinauto/blob/46b1b0ae8b6cc1a5cb066ada7f88e44677231a47/pywinauto/windows/keyboard.py)，批次大小和间隔为本项目选择的初始参数。
+
 主窗口、录音浮层和结果气泡共享 `src/ui/WhisperDesk/Themes/LightTheme.xaml` 中的颜色、字体与控件样式；录音和错误使用独立的语义色，不仅依靠颜色提示状态。
 
 设置弹窗打开和关闭均使用 240 ms 的缩放、淡入淡出动画；关闭时立即开始，不再先停顿 180 ms。

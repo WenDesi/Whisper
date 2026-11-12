@@ -602,6 +602,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[ViewModel] Text injection failed.");
+                Application.Current?.Dispatcher.InvokeAsync(() =>
+                {
+                    LastError = $"文字输入中断，完整内容仍可在主窗口复制。{ex.Message}";
+                    HasError = true;
+                });
             }
         });
     }
